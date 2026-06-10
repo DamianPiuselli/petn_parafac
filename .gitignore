@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+venv/
+ENV/
+
+# Pytest / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (Ignore actual data files, keep raw directory structure)
+data/*
+!data/raw/
+!data/raw/.gitkeep
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
