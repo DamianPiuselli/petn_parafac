@@ -21,9 +21,9 @@ def generate_honey_scattering_mask(ex_wavelens, em_wavelens):
     num_em = len(em_wavelens)
     mask = np.ones((num_em, num_ex))
     
-    # 1st-order Rayleigh: em = ex (width +/- 15 nm)
-    # 2nd-order Rayleigh: em = 2*ex (width +/- 15 nm)
-    # Solvent Raman: em_raman = ex / (1.0 - 3.4e-4 * ex) (width +/- 12 nm)
+    # 1st-order Rayleigh: em = ex (width +/- 22 nm)
+    # 2nd-order Rayleigh: em = 2*ex (width +/- 22 nm)
+    # Solvent Raman: em_raman = ex / (1.0 - 3.4e-4 * ex) (width +/- 18 nm)
     for j in range(num_ex):
         ex = ex_wavelens[j]
         em_raman = ex / (1.0 - 3.4e-4 * ex)
@@ -31,20 +31,20 @@ def generate_honey_scattering_mask(ex_wavelens, em_wavelens):
             em = em_wavelens[k]
             
             # Mask 1st-order Rayleigh
-            if abs(em - ex) <= 15.0:
+            if abs(em - ex) <= 22.0:
                 mask[k, j] = 0.0
                 
             # Mask 2nd-order Rayleigh
-            if abs(em - 2 * ex) <= 15.0:
+            if abs(em - 2 * ex) <= 22.0:
                 mask[k, j] = 0.0
                 
             # Mask Raman
-            if abs(em - em_raman) <= 12.0:
+            if abs(em - em_raman) <= 18.0:
                 mask[k, j] = 0.0
                 
     return mask
 
-def train_honey_dataset(num_components=6, epochs=1500, lr=0.02, seed=42):
+def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     """
     Loads HoneyEEM.mat, builds masks, trains the PINN model, and evaluates botanical separation.
     """
@@ -71,9 +71,11 @@ def train_honey_dataset(num_components=6, epochs=1500, lr=0.02, seed=42):
     X_raw = X_raw[:, ::4, :]
     em_wavelens = em_wavelens[::4]
     
-    # Normalize globally to [0.0, 1.0] for stable gradients and consistent initialization scaling
-    global_max = np.nanmax(X_raw)
-    X_raw = X_raw / global_max
+    # Normalize each sample individually (slice normalization) to remove dilution/concentration effects
+    # and prevent samples with high intensities from dominating the loss function.
+    sample_maxes = np.nanmax(X_raw, axis=(1, 2), keepdims=True)
+    sample_maxes[sample_maxes <= 1e-8] = 1.0
+    X_raw = X_raw / sample_maxes
     
     num_samples = X_raw.shape[0]
     num_em = len(em_wavelens)
@@ -82,15 +84,19 @@ def train_honey_dataset(num_components=6, epochs=1500, lr=0.02, seed=42):
     print(f"Dataset downsampled & normalized: {num_samples} samples, {num_em} emission channels, {num_ex} excitation channels.")
     
     # Extract botanical classes
-    class_ids = dataset['class'][0, 0].squeeze() # (110,)
-    class_lookup_raw = dataset['classlookup'][0, 0]
-    class_names = {}
-    for row in class_lookup_raw:
-        cid = int(row[0][0][0])
-        cname = str(row[1][0])
-        class_names[cid] = cname
+    class_ids = dataset['class'][0, 0].squeeze().copy() # (110,)
+    # Group all fake honey classes (2, 3, 4, 5) into a single "Adulterated (Fake)" class (ID 2)
+    class_ids[(class_ids >= 2) & (class_ids <= 5)] = 2
+    
+    class_names = {
+        1: 'Acacia',
+        2: 'Adulterated (Fake)',
+        6: 'Linden',
+        7: 'Meadow',
+        8: 'Sunflower'
+    }
         
-    print("Class mapping:")
+    print("Class mapping (grouped):")
     for cid, name in sorted(class_names.items()):
         count = np.sum(class_ids == cid)
         print(f"  ID {cid}: {name} ({count} samples)")
@@ -189,41 +195,107 @@ def train_honey_dataset(num_components=6, epochs=1500, lr=0.02, seed=42):
         pred_B[:, r] /= (max_b if max_b > 1e-8 else 1.0)
         pred_C[:, r] /= (max_c if max_c > 1e-8 else 1.0)
         
-    # 6. Evaluation: Class separability analysis
-    # PCA on sample scores A using SVD from scratch
-    # We will do PCA on both raw and row-normalized scores
+    # 6. Evaluation & Diagnostics
+    print("\n--- Model Diagnostics ---")
+    alpha_val = model.alpha.detach().cpu().numpy()
+    print(f"Learned Alpha (molar absorptivities): {alpha_val}")
     
-    # 1. Raw scores PCA & Classification
-    A_centered = pred_A - np.mean(pred_A, axis=0)
-    U, S, Vt = np.linalg.svd(A_centered, full_matrices=False)
-    scores_pca = U[:, :2] * S[:2]
+    # Calculate reconstructed attenuation gamma = 10^(-Abs_ex)
+    # pred_A: (110, 6), pred_B: (52, 6) -> Abs_ex is sample-wise and wavelength-wise
+    # Let's compute average gamma across all sample-excitation pairs
+    # pred_A has shape (num_samples, num_components)
+    # pred_B has shape (num_ex, num_components)
+    # Abs_ex_matrix shape: (num_samples, num_ex)
+    Abs_ex_matrix = np.dot(pred_A, (alpha_val * pred_B).T)
+    gamma_matrix = 10.0 ** (-Abs_ex_matrix)
+    print(f"Attenuation gamma - Mean: {np.mean(gamma_matrix):.4f}, Min: {np.min(gamma_matrix):.4f}, Max: {np.max(gamma_matrix):.4f}")
     
-    correct_raw = 0
-    for i in range(num_samples):
-        dists = np.sum((pred_A - pred_A[i])**2, axis=1)
-        dists[i] = np.inf
-        nearest_idx = np.argmin(dists)
-        if class_ids[nearest_idx] == class_ids[i]:
-            correct_raw += 1
-    classification_acc = correct_raw / num_samples
-    print(f"Resolved sample scores 1-NN Leave-One-Out Classification Accuracy (Raw): {classification_acc * 100:.2f}%")
+    # Define multi-classifier evaluation function
+    def evaluate_knn(scores, labels, k_list=[1, 3, 5]):
+        num_samples = len(labels)
+        results = {}
+        for k in k_list:
+            correct = 0
+            for i in range(num_samples):
+                dists = np.sum((scores - scores[i])**2, axis=1)
+                dists[i] = np.inf
+                nearest_indices = np.argsort(dists)[:k]
+                nearest_labels = labels[nearest_indices]
+                unique, counts = np.unique(nearest_labels, return_counts=True)
+                pred_label = unique[np.argmax(counts)]
+                if pred_label == labels[i]:
+                    correct += 1
+            results[k] = correct / num_samples
+        return results
+
+    # Score normalizations
+    pred_A_l1 = pred_A / (np.sum(pred_A, axis=1, keepdims=True) + 1e-12)
+    pred_A_l2 = pred_A / (np.linalg.norm(pred_A, axis=1, keepdims=True) + 1e-12)
+    pred_A_std = (pred_A - np.mean(pred_A, axis=0)) / (np.std(pred_A, axis=0) + 1e-12)
+    pred_A_l2_std = (pred_A_l2 - np.mean(pred_A_l2, axis=0)) / (np.std(pred_A_l2, axis=0) + 1e-12)
     
-    # 2. Row-normalized scores PCA & Classification
-    # To avoid division by zero, we add a tiny epsilon to sum
-    pred_A_norm = pred_A / (np.sum(pred_A, axis=1, keepdims=True) + 1e-12)
-    A_norm_centered = pred_A_norm - np.mean(pred_A_norm, axis=0)
+    acc_raw = evaluate_knn(pred_A, class_ids)
+    acc_l1 = evaluate_knn(pred_A_l1, class_ids)
+    acc_l2 = evaluate_knn(pred_A_l2, class_ids)
+    acc_std = evaluate_knn(pred_A_std, class_ids)
+    acc_l2_std = evaluate_knn(pred_A_l2_std, class_ids)
+    
+    print("\n--- LOO k-NN Classification Accuracy ---")
+    print(f"Raw scores:         1-NN: {acc_raw[1]*100:.2f}%, 3-NN: {acc_raw[3]*100:.2f}%, 5-NN: {acc_raw[5]*100:.2f}%")
+    print(f"L1 Normalized:      1-NN: {acc_l1[1]*100:.2f}%, 3-NN: {acc_l1[3]*100:.2f}%, 5-NN: {acc_l1[5]*100:.2f}%")
+    print(f"L2 Normalized:      1-NN: {acc_l2[1]*100:.2f}%, 3-NN: {acc_l2[3]*100:.2f}%, 5-NN: {acc_l2[5]*100:.2f}%")
+    print(f"Standardized (Z):   1-NN: {acc_std[1]*100:.2f}%, 3-NN: {acc_std[3]*100:.2f}%, 5-NN: {acc_std[5]*100:.2f}%")
+    print(f"L2 + Standardized:  1-NN: {acc_l2_std[1]*100:.2f}%, 3-NN: {acc_l2_std[3]*100:.2f}%, 5-NN: {acc_l2_std[5]*100:.2f}%")
+    
+    # Supervised classification using Ridge Classifier LOO (replicates PLS-DA linear discriminant intent)
+    def evaluate_ridge_loo(scores, labels, alpha=1.0):
+        num_samples = len(labels)
+        unique_classes = np.unique(labels)
+        num_classes = len(unique_classes)
+        label_to_idx = {l: idx for idx, l in enumerate(unique_classes)}
+        y_indices = np.array([label_to_idx[l] for l in labels])
+        
+        correct = 0
+        for i in range(num_samples):
+            X_train = np.delete(scores, i, axis=0)
+            y_train = np.delete(y_indices, i, axis=0)
+            X_test = scores[i:i+1]
+            
+            Y_train = np.zeros((num_samples - 1, num_classes))
+            Y_train[np.arange(num_samples - 1), y_train] = 1.0
+            
+            X_train_bias = np.hstack([X_train, np.ones((num_samples - 1, 1))])
+            X_test_bias = np.hstack([X_test, np.ones((1, 1))])
+            
+            XTX = np.dot(X_train_bias.T, X_train_bias)
+            I = np.eye(XTX.shape[0])
+            I[-1, -1] = 0.0  # Do not regularize bias
+            W = np.linalg.solve(XTX + alpha * I, np.dot(X_train_bias.T, Y_train))
+            
+            pred = np.dot(X_test_bias, W)
+            pred_class = unique_classes[np.argmax(pred, axis=1)[0]]
+            if pred_class == labels[i]:
+                correct += 1
+        return correct / num_samples
+
+    ridge_raw = evaluate_ridge_loo(pred_A, class_ids)
+    ridge_l1 = evaluate_ridge_loo(pred_A_l1, class_ids)
+    ridge_l2 = evaluate_ridge_loo(pred_A_l2, class_ids)
+    ridge_std = evaluate_ridge_loo(pred_A_std, class_ids)
+    ridge_l2_std = evaluate_ridge_loo(pred_A_l2_std, class_ids)
+    
+    print("\n--- LOO Ridge Classifier Accuracy (Supervised) ---")
+    print(f"Raw scores:         {ridge_raw*100:.2f}%")
+    print(f"L1 Normalized:      {ridge_l1*100:.2f}%")
+    print(f"L2 Normalized:      {ridge_l2*100:.2f}%")
+    print(f"Standardized (Z):   {ridge_std*100:.2f}%")
+    print(f"L2 + Standardized:  {ridge_l2_std*100:.2f}%")
+    
+    # Use L2+Std Ridge classification accuracy for display in the plot title
+    classification_acc_norm = ridge_l2_std
+    A_norm_centered = pred_A_l2_std
     U_n, S_n, Vt_n = np.linalg.svd(A_norm_centered, full_matrices=False)
     scores_norm_pca = U_n[:, :2] * S_n[:2]
-    
-    correct_norm = 0
-    for i in range(num_samples):
-        dists = np.sum((pred_A_norm - pred_A_norm[i])**2, axis=1)
-        dists[i] = np.inf
-        nearest_idx = np.argmin(dists)
-        if class_ids[nearest_idx] == class_ids[i]:
-            correct_norm += 1
-    classification_acc_norm = correct_norm / num_samples
-    print(f"Resolved sample scores 1-NN Leave-One-Out Classification Accuracy (Row-Normalized): {classification_acc_norm * 100:.2f}%")
     
     # 7. Plotting and Visualizations
     os.makedirs('notebooks', exist_ok=True)
@@ -282,7 +354,7 @@ def train_honey_dataset(num_components=6, epochs=1500, lr=0.02, seed=42):
             s=80
         )
         
-    plt.title(f'PCA of Row-Normalized Resolved Honey Scores (1-NN Accuracy: {classification_acc_norm*100:.1f}%)', fontsize=14, fontweight='bold')
+    plt.title(f'PCA of Row-Normalized Resolved Honey Scores (LOO Ridge Accuracy: {classification_acc_norm*100:.1f}%)', fontsize=14, fontweight='bold')
     plt.xlabel('Principal Component 1', fontsize=12)
     plt.ylabel('Principal Component 2', fontsize=12)
     plt.grid(True, linestyle='--', alpha=0.5)
