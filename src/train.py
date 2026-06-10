@@ -177,17 +177,19 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
     np.random.seed(seed)
     
     # 1. Generate data
-    print("Generating synthetic EEM data...")
+    print("Generating synthetic EEM data with scattering corruption...")
     generator = EEMGenerator(num_samples=20, num_ex=60, num_em=100, num_components=3, seed=seed)
-    data = generator.generate_dataset(noise_std=0.005)
+    data = generator.generate_dataset(noise_std=0.005, corrupt_scatter=True)
     
     X = data['X']
+    X_true = data['X_true']
     true_A = data['A']
     true_B = data['B']
     true_C = data['C']
+    mask_2d = data['mask']
     
     # Create DataLoader
-    dataset = EEMDataset(X)
+    dataset = EEMDataset(X, mask=mask_2d)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
     # 2. Instantiate model
@@ -246,11 +248,25 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
     )
     
     # 6. Save comparison plot
-    from src.utils import plot_resolved_vs_true_profiles
+    from src.utils import plot_resolved_vs_true_profiles, plot_eem_heatmaps
     plot_resolved_vs_true_profiles(
         true_B, true_C, aligned_B, aligned_C,
         generator.ex_wavelens, generator.em_wavelens,
-        save_path='notebooks/mvp_resolved_profiles.png'
+        save_path='notebooks/phase2_resolved_profiles.png'
+    )
+    
+    # Compute full reconstructed tensor to visualize heatmaps
+    X_reconstructed = np.einsum('ir,jr,kr->ijk', aligned_A, aligned_B, aligned_C)
+    
+    # Save heatmap plot
+    plot_eem_heatmaps(
+        X_clean=X_true[0],
+        X_corrupted=X[0],
+        mask=mask_2d,
+        X_reconstructed=X_reconstructed[0],
+        ex_wavelens=generator.ex_wavelens,
+        em_wavelens=generator.em_wavelens,
+        save_path='notebooks/phase2_eem_heatmaps.png'
     )
     
     # 7. Print and return metrics

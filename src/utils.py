@@ -56,3 +56,63 @@ def plot_resolved_vs_true_profiles(true_B, true_C, pred_B, pred_C, ex_wavelens, 
     else:
         plt.show()
     plt.close()
+
+def plot_eem_heatmaps(X_clean, X_corrupted, mask, X_reconstructed, ex_wavelens, em_wavelens, save_path=None):
+    """
+    Plots a 4-panel comparison of EEM heatmaps:
+    1. Clean EEM
+    2. Corrupted EEM (with scattering lines)
+    3. Binary Mask W
+    4. Reconstructed EEM from the model
+    
+    Args:
+        X_clean: 2D numpy array of shape (num_ex, num_em)
+        X_corrupted: 2D numpy array of shape (num_ex, num_em)
+        mask: 2D numpy array of shape (num_ex, num_em)
+        X_reconstructed: 2D numpy array of shape (num_ex, num_em)
+        ex_wavelens: array of excitation wavelengths
+        em_wavelens: array of emission wavelengths
+        save_path: path to save the generated image, or None to display it.
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    
+    # Grid for contour plotting
+    EM, EX = np.meshgrid(em_wavelens, ex_wavelens)
+    
+    # 1. Clean EEM
+    c1 = axes[0, 0].contourf(EM, EX, X_clean, levels=50, cmap='viridis')
+    fig.colorbar(c1, ax=axes[0, 0], label='Intensity')
+    axes[0, 0].set_title('True Clean EEM')
+    axes[0, 0].set_xlabel('Emission Wavelength (nm)')
+    axes[0, 0].set_ylabel('Excitation Wavelength (nm)')
+    
+    # 2. Corrupted EEM
+    max_clean = np.max(X_clean)
+    c2 = axes[0, 1].contourf(EM, EX, X_corrupted, levels=50, cmap='viridis', vmax=max_clean * 1.5)
+    fig.colorbar(c2, ax=axes[0, 1], label='Intensity (Saturated)')
+    axes[0, 1].set_title('Corrupted EEM (with Scattering)')
+    axes[0, 1].set_xlabel('Emission Wavelength (nm)')
+    axes[0, 1].set_ylabel('Excitation Wavelength (nm)')
+    
+    # 3. Binary Mask W
+    c3 = axes[1, 0].contourf(EM, EX, mask, levels=2, cmap='gray')
+    fig.colorbar(c3, ax=axes[1, 0], label='Mask Value (0=Ignore, 1=Train)')
+    axes[1, 0].set_title('Binary Mask W')
+    axes[1, 0].set_xlabel('Emission Wavelength (nm)')
+    axes[1, 0].set_ylabel('Excitation Wavelength (nm)')
+    
+    # 4. Reconstructed EEM
+    c4 = axes[1, 1].contourf(EM, EX, X_reconstructed, levels=50, cmap='viridis', vmax=max_clean)
+    fig.colorbar(c4, ax=axes[1, 1], label='Intensity')
+    axes[1, 1].set_title('PINN Reconstructed EEM (Scattering Interpolated)')
+    axes[1, 1].set_xlabel('Emission Wavelength (nm)')
+    axes[1, 1].set_ylabel('Excitation Wavelength (nm)')
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+        print(f"EEM heatmap plot saved to {save_path}")
+    else:
+        plt.show()
+    plt.close()
+

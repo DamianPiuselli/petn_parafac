@@ -64,30 +64,102 @@ class EEMGenerator:
         """
         return self.rng.uniform(0.1, 1.5, size=(self.num_samples, self.num_components))
 
-    def generate_dataset(self, noise_std=0.01):
+    def generate_scatter_and_mask(self):
         """
-        Generates synthetic clean EEM data with additive Gaussian noise.
+        Generates 1st and 2nd order Rayleigh scattering and solvent Raman scattering
+        along with a binary mask that equals 0 on the scattering diagonals and 1 elsewhere.
+        
+        Returns:
+            scatter: 2D numpy array of shape (num_ex, num_em) containing the combined scattering intensity
+            mask: 2D numpy array of shape (num_ex, num_em) containing 0 in scattering regions and 1 elsewhere
+        """
+        scatter = np.zeros((self.num_ex, self.num_em))
+        mask = np.ones((self.num_ex, self.num_em))
+        
+        # Scattering parameters
+        # 1st-order Rayleigh: em = ex
+        h_ray1 = 15.0
+        sigma_ray1 = 3.5
+        
+        # 2nd-order Rayleigh: em = 2 * ex
+        h_ray2 = 5.0
+        sigma_ray2 = 4.0
+        
+        # Solvent Raman: 3400 cm-1 shift
+        h_raman = 4.0
+        sigma_raman = 4.0
+        
+        for j in range(self.num_ex):
+            ex = self.ex_wavelens[j]
+            # Raman peak position for this excitation
+            em_raman = ex / (1.0 - 3.4e-4 * ex)
+            
+            for k in range(self.num_em):
+                em = self.em_wavelens[k]
+                
+                # 1. 1st-order Rayleigh
+                dist_ray1 = em - ex
+                val_ray1 = h_ray1 * np.exp(-0.5 * (dist_ray1 / sigma_ray1) ** 2)
+                
+                # 2. 2nd-order Rayleigh
+                dist_ray2 = em - 2 * ex
+                val_ray2 = h_ray2 * np.exp(-0.5 * (dist_ray2 / sigma_ray2) ** 2)
+                
+                # 3. Water Raman
+                dist_raman = em - em_raman
+                val_raman = h_raman * np.exp(-0.5 * (dist_raman / sigma_raman) ** 2)
+                
+                # Combine scattering intensities
+                scatter[j, k] = val_ray1 + val_ray2 + val_raman
+                
+                # Mask out regions where scattering is non-negligible
+                # Mask out within 2.0 standard deviations (95% of peak width)
+                if (abs(dist_ray1) <= 2.0 * sigma_ray1 or 
+                    abs(dist_ray2) <= 2.0 * sigma_ray2 or 
+                    abs(dist_raman) <= 2.0 * sigma_raman):
+                    mask[j, k] = 0.0
+                    
+        return scatter, mask
+
+    def generate_dataset(self, noise_std=0.01, corrupt_scatter=False):
+        """
+        Generates synthetic EEM data with additive Gaussian noise and optional scattering.
+        
+        Args:
+            noise_std: standard deviation of homoscedastic noise.
+            corrupt_scatter: if True, inject Rayleigh and Raman scatter lines and output a mask.
+            
         Returns:
             dataset: dict containing:
                 'X': 3D numpy array of shape (num_samples, num_ex, num_em)
-                'X_true': 3D numpy array of shape (num_samples, num_ex, num_em) without noise
+                'X_true': 3D numpy array of shape (num_samples, num_ex, num_em) without noise/scatter
                 'A': ground truth scores, shape (num_samples, num_components)
                 'B': ground truth excitation, shape (num_ex, num_components)
                 'C': ground truth emission, shape (num_em, num_components)
                 'ex': excitation wavelengths
                 'em': emission wavelengths
+                'mask': 2D numpy array of shape (num_ex, num_em) or None
         """
         A = self.generate_scores()
         B, C = self.generate_profiles()
         
         # Calculate tensor outer product (PARAFAC model)
-        # X(i,j,k) = sum_r A(i,r) * B(j,r) * C(k,r)
         X_true = np.einsum('ir,jr,kr->ijk', A, B, C)
         
-        # Add homoscedastic noise
-        noise = self.rng.normal(0.0, noise_std, size=X_true.shape)
-        X = X_true + noise
-        
+        mask = None
+        if corrupt_scatter:
+            scatter_2d, mask_2d = self.generate_scatter_and_mask()
+            # Add scattering to every sample
+            X_true_corrupted = X_true + scatter_2d[np.newaxis, :, :]
+            mask = mask_2d
+            
+            # Add noise to the corrupted tensor
+            noise = self.rng.normal(0.0, noise_std, size=X_true_corrupted.shape)
+            X = X_true_corrupted + noise
+        else:
+            noise = self.rng.normal(0.0, noise_std, size=X_true.shape)
+            X = X_true + noise
+            
         return {
             'X': X,
             'X_true': X_true,
@@ -95,5 +167,6 @@ class EEMGenerator:
             'B': B,
             'C': C,
             'ex': self.ex_wavelens,
-            'em': self.em_wavelens
+            'em': self.em_wavelens,
+            'mask': mask
         }
