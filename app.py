@@ -303,7 +303,7 @@ if not st.session_state.initialized:
     
     col_ed1, col_ed2 = st.columns(2)
     with col_ed1:
-        st.markdown("""
+        st.markdown(r"""
         **1. Unmasking Scattering Artifacts**
         * Rayleigh and Raman scattering create massive diagonal bands of light intensity.
         * Standard linear PARAFAC attempts to fit this scattering as separate chemical components, completely corrupting the resolved loadings.
@@ -311,7 +311,7 @@ if not st.session_state.initialized:
         * Blinded to the scattering bands, the model uses its rigid outer product constraints to smoothly interpolate the true signals underneath.
         """)
     with col_ed2:
-        st.markdown("""
+        st.markdown(r"""
         **2. Reversing non-linear Inner Filter Effects (IFE)**
         * Highly concentrated mixtures absorb light in the cuvette, reducing fluorescence intensity non-linearly (attenuation).
         * The PINN embeds a **Cuvette Attenuation Head** inside the computational graph.
