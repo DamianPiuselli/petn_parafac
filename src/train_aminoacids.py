@@ -194,7 +194,7 @@ def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43):
     print(f"\nAverage Concentration Recovery R2: {avg_r2:.4f}")
     
     # 7. Save resolved loading profiles comparison
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
     
     for r in range(3):
@@ -212,6 +212,32 @@ def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43):
     axes[1].set_ylabel('Normalized Intensity')
     axes[1].grid(True, linestyle=':', alpha=0.6)
     axes[1].legend()
+    
+    # Normalized concentration scores comparison
+    max_y = np.max(y_true, axis=0, keepdims=True)
+    max_y = np.where(max_y == 0, 1.0, max_y)
+    norm_y_true = y_true / max_y
+    norm_aligned_A = aligned_A / max_y
+
+    axes[2].set_title('Concentration Recovery (Scores A)')
+    x = np.arange(num_samples)
+    width = 0.12
+    
+    axes[2].bar(x - 2.5 * width, norm_y_true[:, 0], width, label='Trp (True)', color='#1f77b4', alpha=0.4)
+    axes[2].bar(x - 1.5 * width, norm_aligned_A[:, 0], width, label='Trp (Pred)', color='#1f77b4', edgecolor='#1f77b4', linewidth=1.5)
+    
+    axes[2].bar(x - 0.5 * width, norm_y_true[:, 1], width, label='Tyr (True)', color='#ff7f0e', alpha=0.4)
+    axes[2].bar(x + 0.5 * width, norm_aligned_A[:, 1], width, label='Tyr (Pred)', color='#ff7f0e', edgecolor='#ff7f0e', linewidth=1.5)
+    
+    axes[2].bar(x + 1.5 * width, norm_y_true[:, 2], width, label='Phe (True)', color='#2ca02c', alpha=0.4)
+    axes[2].bar(x + 2.5 * width, norm_aligned_A[:, 2], width, label='Phe (Pred)', color='#2ca02c', edgecolor='#2ca02c', linewidth=1.5)
+    
+    axes[2].set_xlabel('Sample')
+    axes[2].set_ylabel('Normalized Concentration')
+    axes[2].set_xticks(x)
+    axes[2].set_xticklabels([f"S{i+1}" for i in range(num_samples)])
+    axes[2].grid(True, linestyle=':', alpha=0.6)
+    axes[2].legend(fontsize='small', ncol=3, loc='upper center', bbox_to_anchor=(0.5, 1.15))
     
     plt.tight_layout()
     os.makedirs('notebooks', exist_ok=True)
