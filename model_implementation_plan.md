@@ -91,4 +91,15 @@ This step-by-step implementation backlog is structured like an agile development
 
 ---
 
+## Phase 5: Future Work & Production Features (Backlog)
+
+### Step 5.1: Semi-Supervised Training Guidance
+* **Task:** Implement an auxiliary supervised loss term $\lambda \mathcal{L}_{\text{supervised}}$ to constrain the score embeddings ($A_{std}$) of calibration standards to their known physical concentrations during training.
+* **Benefits:** Guides component separation in complex mixtures and resolves absolute physical units for molar absorptivity ($\alpha_r$) and scores.
+
+### Step 5.2: Frozen Projection Inference Utility
+* **Task:** Implement a single-sample inference helper `predict_unknown(new_eem, model)` that freezes the trained loading parameters ($B$, $C$, $\alpha$) and solves a non-linear optimization problem to predict concentrations ($a_{\text{new}}$) for new unknown EEM samples.
+
+---
+
 Which phase or specific tool within this backlog would you like to start drafting first? We can begin writing the core Python code for the synthetic generator or design the neural network structure.

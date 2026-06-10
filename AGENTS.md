@@ -36,5 +36,6 @@ D. Custom Masked Loss (Scattering Constraint):
 * Phase 2 (Artifact Handling): Adding Rayleigh/Raman scatter to the generator and implementing the custom masked loss function.
 * Phase 3 (Non-Linear Upgrade): Implementing the Lakowicz geometric correction in the generator and adding the Dense IFE multiplier head to the network.
 * Phase 4 (Real-World Deployment): Validation using open-access benchmarks (e.g., Copenhagen Honey/Micropollutants datasets).
+* Phase 5 (Future Extensions): Semi-supervised standard constraints & frozen inference projection for new unknown samples.
 
 When generating code, architectures, or training loops, ensure all constraints are hardcoded into the layers and loss functions as specified above.
