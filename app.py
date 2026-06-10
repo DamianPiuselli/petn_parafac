@@ -90,6 +90,7 @@ model_type = st.sidebar.selectbox("Model Architecture", ["PINN-PARAFAC", "Pure P
 lr = st.sidebar.slider("Learning Rate", min_value=0.001, max_value=0.05, value=0.008, step=0.001, format="%.3f")
 total_epochs = st.sidebar.number_input("Total Training Epochs", min_value=100, max_value=10000, value=2000, step=500)
 epochs_per_update = st.sidebar.slider("Epochs per UI Update", min_value=10, max_value=500, value=100, step=10)
+ui_delay = st.sidebar.slider("UI Update Delay (seconds)", min_value=0.0, max_value=2.0, value=0.1, step=0.05)
 
 st.sidebar.markdown("---")
 st.sidebar.header("3. Live Operations")
@@ -336,6 +337,8 @@ else:
     if st.session_state.is_training:
         if st.session_state.epoch < total_epochs:
             loss_val, r2_a, r2_b, r2_c = run_training_step(epochs_per_update, lr, model_type)
+            if ui_delay > 0:
+                time.sleep(ui_delay)
             st.rerun()
         else:
             st.session_state.is_training = False
