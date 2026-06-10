@@ -105,11 +105,11 @@ graph TD
     I_obs --> Loss
     Mask --> Loss
     
-    classDef input fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
-    classDef embedding fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
-    classDef core fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
-    classDef atten fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
-    classDef output fill:#eceff1,stroke:#455a64,stroke-width:2px;
+    classDef input fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000000,font-size:14px;
+    classDef embedding fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000000,font-size:14px;
+    classDef core fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000000,font-size:14px;
+    classDef atten fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000000,font-size:14px;
+    classDef output fill:#eceff1,stroke:#455a64,stroke-width:2px,color:#000000,font-size:14px;
     
     class S_idx,Ex_idx,Em_idx input;
     class A_emb,B_emb,C_emb embedding;
