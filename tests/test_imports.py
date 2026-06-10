@@ -17,14 +17,14 @@ def test_library_imports():
 
 def test_module_imports():
     """Verify that all internal project modules can be imported."""
-    from src.generator import generate_synthetic_eem
+    from src.generator import EEMGenerator
     from src.model import PINNParafac
     from src.loss import masked_mse_loss
-    from src.train import train_model
-    from src.utils import plot_components
+    from src.train import train_pinn_mvp
+    from src.utils import plot_resolved_vs_true_profiles
     
-    assert generate_synthetic_eem is not None
+    assert EEMGenerator is not None
     assert PINNParafac is not None
     assert masked_mse_loss is not None
-    assert train_model is not None
-    assert plot_components is not None
+    assert train_pinn_mvp is not None
+    assert plot_resolved_vs_true_profiles is not None
