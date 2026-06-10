@@ -235,7 +235,7 @@ def run_training_step(num_epochs, lr_val, model_arch):
     em_indices = torch.tensor(em_grid.reshape(-1), dtype=torch.long)
     intensities = torch.tensor(dataset['X'].reshape(-1), dtype=torch.float32)
     
-    if model_arch == "PINN-PARAFAC" and dataset['mask'] is not None:
+    if dataset['mask'] is not None:
         mask_3d = dataset['mask'][np.newaxis, :, :].repeat(generator.num_samples, axis=0)
         mask_values = torch.tensor(mask_3d.reshape(-1), dtype=torch.float32)
     else:
@@ -582,6 +582,9 @@ else:
                 # Ground truth molar absorptivities
                 # alpha true: [0.15, 0.10, 0.20]
                 true_E = dataset['E']
+                if true_E is None:
+                    # If IFE corruption was disabled, construct the theoretical true E profile
+                    true_E = dataset['B'] * np.array([0.15, 0.10, 0.20])
                 
                 for r in range(generator.num_components):
                     fig_abs.add_trace(go.Scatter(x=generator.ex_wavelens, y=true_E[:, r], mode='lines', name=f"True α*B {comp_names[r]}", line=dict(color=colors_comp[r], width=1.5, dash='dash')))
