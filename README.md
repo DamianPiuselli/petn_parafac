@@ -36,6 +36,88 @@ $$\mathcal{L} = \frac{1}{\sum W} \sum_{i,j,k} W_{i,j,k} \cdot \left( I_{\text{ob
 
 This blinds the model to scattering zones, forcing the rigid trilinear core to smoothly interpolate the true chemical signal directly underneath the artifacts.
 
+### Model Architecture Flow
+
+```mermaid
+graph TD
+    %% Input nodes
+    subgraph Inputs ["Input Coordinate Triplets"]
+        S_idx["sample_idx (i)"]
+        Ex_idx["ex_idx (j)"]
+        Em_idx["em_idx (k)"]
+    end
+
+    %% Embedding Layers
+    subgraph Embeddings ["Embedding Layers (Non-Negative constraints)"]
+        A_emb["Sample Scores (A)<br/>a_ir (shape: num_samples x R)"]
+        B_emb["Excitation Loadings (B)<br/>b_jr (shape: num_ex x R)"]
+        C_emb["Emission Loadings (C)<br/>c_kr (shape: num_em x R)"]
+    end
+
+    %% Routing
+    S_idx --> A_emb
+    Ex_idx --> B_emb
+    Em_idx --> C_emb
+
+    %% Trilinear Core
+    subgraph Trilinear_Core ["Trilinear Core (White-Box)"]
+        Product["Tensor Outer Product & Component Sum:<br/>∑ a_ir · b_jr · c_kr"]
+        I_true["True Intensity (I_true)"]
+    end
+
+    A_emb & B_emb & C_emb --> Product
+    Product --> I_true
+
+    %% Gray-Box Attenuation Head
+    subgraph Attenuation_Head ["Cuvette Attenuation Head (Gray-Box for IFE)"]
+        Alpha["Molar Absorptivity Scaling (α_r)<br/>[Learnable Parameter]"]
+        Ex_bg["Solvent Background (Abs_bg,ex)<br/>[Fixed Buffer]"]
+        Em_bg["Solvent Background (Abs_bg,em)<br/>[Fixed Buffer]"]
+        
+        Abs_ex["Excitation Absorbance:<br/>∑ a_ir · (α_r · b_jr) + Abs_bg,ex"]
+        Abs_em["Emission Absorbance:<br/>Abs_bg,em"]
+        
+        Gamma["Attenuation Coefficient (γ):<br/>10^-(Abs_ex + Abs_em)"]
+    end
+
+    A_emb & B_emb --> Abs_ex
+    Alpha --> Abs_ex
+    Ex_idx --> Ex_bg
+    Ex_bg --> Abs_ex
+    
+    Em_idx --> Em_bg
+    Em_bg --> Abs_em
+
+    Abs_ex & Abs_em --> Gamma
+
+    %% Combination
+    subgraph Output_Layer ["Output & Masked Loss"]
+        Multiply["Multiplication (I_true × γ)"]
+        I_obs["Predicted Observed Intensity (I_obs_hat)"]
+        
+        Mask["Binary Scatter Mask (W)<br/>[Blinds Scattering Bands]"]
+        Loss["Masked MSE Loss:<br/>L = MSE(I_obs_hat, Target_I) × W"]
+    end
+
+    I_true --> Multiply
+    Gamma --> Multiply
+    Multiply --> I_obs
+    I_obs --> Loss
+    Mask --> Loss
+    
+    classDef input fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef embedding fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
+    classDef core fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
+    classDef atten fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    classDef output fill:#eceff1,stroke:#455a64,stroke-width:2px;
+    
+    class S_idx,Ex_idx,Em_idx input;
+    class A_emb,B_emb,C_emb embedding;
+    class Product,I_true core;
+    class Alpha,Ex_bg,Em_bg,Abs_ex,Abs_em,Gamma atten;
+    class Multiply,I_obs,Mask,Loss output;
+```
+
 ---
 
 ## 2. Repository Structure
