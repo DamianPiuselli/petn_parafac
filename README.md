@@ -275,3 +275,21 @@ with torch.no_grad():
     em_loadings = model.em_embeddings.weight.numpy()
     molar_abs, _ = model.get_learned_absorptivities()
 ```
+
+---
+
+## 6. Interactive Cuvette Simulator & Dashboard
+
+An interactive Streamlit-based dashboard is provided to visualize the model training process in real time on synthetic datasets. The dashboard simulates Rayleigh/Raman scattering, Inner Filter Effects (IFE), and homoscedastic noise, allowing you to directly compare `PINN-PARAFAC` against `Classical PARAFAC`.
+
+### Features
+* **Live Solver Animation**: Watch the model weights align with the ground truth excitation and emission loadings epoch-by-epoch.
+* **Corrupted vs. Recovered Heatmaps**: Select any sample and visually compare the True Clean EEM, the Corrupted EEM, the Model Reconstructed observed EEM, and the Recovered Clean EEM.
+* **Physical Parameter Verification**: Compare true molar absorptivities ($E = \alpha \cdot B$) and registered solvent background profiles against the model's learned weights.
+
+### How to Run
+Run the following command in your terminal from the project root:
+```bash
+streamlit run app.py
+```
+
