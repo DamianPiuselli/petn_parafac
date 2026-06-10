@@ -139,9 +139,17 @@ def match_and_align_components(true_A, true_B, true_C, pred_A, pred_B, pred_C):
     r2_B = []
     r2_C = []
     for r in range(num_components):
-        # Score R^2 (concentration correlation)
-        ss_res_a = np.sum((norm_true_A[:, r] - aligned_pred_A[:, r]) ** 2)
-        ss_tot_a = np.sum((norm_true_A[:, r] - np.mean(norm_true_A[:, r])) ** 2)
+        # Apply optimal linear scale matching on scores to resolve global scaling ambiguity
+        # s_r = sum(true * pred) / sum(pred^2)
+        true_col = norm_true_A[:, r]
+        pred_col = aligned_pred_A[:, r]
+        s_r = np.sum(true_col * pred_col) / (np.sum(pred_col ** 2) + 1e-8)
+        scaled_pred_col = s_r * pred_col
+        aligned_pred_A[:, r] = scaled_pred_col
+        
+        # Now compute R^2
+        ss_res_a = np.sum((true_col - scaled_pred_col) ** 2)
+        ss_tot_a = np.sum((true_col - np.mean(true_col)) ** 2)
         r2_a = 1.0 - (ss_res_a / ss_tot_a) if ss_tot_a > 1e-8 else 0.0
         r2_A.append(r2_a)
         
@@ -177,9 +185,9 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
     np.random.seed(seed)
     
     # 1. Generate data
-    print("Generating synthetic EEM data with scattering corruption...")
+    print("Generating synthetic EEM data with scattering and IFE non-linear corruption...")
     generator = EEMGenerator(num_samples=20, num_ex=60, num_em=100, num_components=3, seed=seed)
-    data = generator.generate_dataset(noise_std=0.005, corrupt_scatter=True)
+    data = generator.generate_dataset(noise_std=0.005, corrupt_scatter=True, corrupt_ife=True)
     
     X = data['X']
     X_true = data['X_true']
@@ -187,10 +195,23 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
     true_B = data['B']
     true_C = data['C']
     mask_2d = data['mask']
+    gamma_true = data['gamma']
     
-    # Create DataLoader
-    dataset = EEMDataset(X, mask=mask_2d)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    # Pre-flatten coordinate vectors for fast full-batch training on CPU
+    sample_grid, ex_grid, em_grid = np.meshgrid(
+        np.arange(generator.num_samples),
+        np.arange(generator.num_ex),
+        np.arange(generator.num_em),
+        indexing='ij'
+    )
+    sample_indices = torch.tensor(sample_grid.reshape(-1), dtype=torch.long)
+    ex_indices = torch.tensor(ex_grid.reshape(-1), dtype=torch.long)
+    em_indices = torch.tensor(em_grid.reshape(-1), dtype=torch.long)
+    intensities = torch.tensor(X.reshape(-1), dtype=torch.float32)
+    
+    # Broadcast 2D mask to 3D for coordinates
+    mask_3d = mask_2d[np.newaxis, :, :].repeat(generator.num_samples, axis=0)
+    mask_values = torch.tensor(mask_3d.reshape(-1), dtype=torch.float32)
     
     # 2. Instantiate model
     print("Building PINN model...")
@@ -198,42 +219,35 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
         num_samples=generator.num_samples,
         num_ex=generator.num_ex,
         num_em=generator.num_em,
+        ex_wavelens=generator.ex_wavelens,
+        em_wavelens=generator.em_wavelens,
         num_components=generator.num_components
     )
     
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    # Configure optimizer with separate learning rates and L2 regularization for the MLP parameters
+    optimizer = optim.Adam([
+        {'params': [model.sample_embeddings.weight, model.ex_embeddings.weight, model.em_embeddings.weight], 'lr': 0.008},
+        {'params': model.ife_network.parameters(), 'lr': 0.001, 'weight_decay': 1e-4}
+    ])
     
     # 3. Training loop
-    print(f"Training model for {epochs} epochs...")
+    epochs = 1200
+    print(f"Training model in full-batch mode for {epochs} epochs...")
     for epoch in range(1, epochs + 1):
         model.train()
-        epoch_loss = 0.0
-        batches = 0
+        optimizer.zero_grad()
         
-        for sample_idx, ex_idx, em_idx, target, mask in dataloader:
-            optimizer.zero_grad()
-            
-            # Forward pass
-            predictions = model(sample_idx, ex_idx, em_idx)
-            
-            # Compute loss
-            loss = masked_mse_loss(predictions, target, mask)
-            
-            # Backward pass
-            loss.backward()
-            
-            # Optimizer step
-            optimizer.step()
-            
-            # Enforce positive constraints
-            model.project_constraints()
-            
-            epoch_loss += loss.item()
-            batches += 1
-            
-        avg_loss = epoch_loss / batches
-        if epoch % 50 == 0 or epoch == 1:
-            print(f"Epoch {epoch:03d}/{epochs} - Loss: {avg_loss:.6f}")
+        predictions = model(sample_indices, ex_indices, em_indices)
+        loss = masked_mse_loss(predictions, intensities, mask_values)
+        
+        loss.backward()
+        optimizer.step()
+        
+        # Enforce positive constraints
+        model.project_constraints()
+        
+        if epoch % 200 == 0 or epoch == 1:
+            print(f"Epoch {epoch:04d}/{epochs} - Loss: {loss.item():.6f}")
             
     # 4. Extract trained weights
     model.eval()
@@ -248,15 +262,18 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
     )
     
     # 6. Save comparison plot
-    from src.utils import plot_resolved_vs_true_profiles, plot_eem_heatmaps
+    from src.utils import plot_resolved_vs_true_profiles, plot_eem_heatmaps, plot_ife_comparison
     plot_resolved_vs_true_profiles(
         true_B, true_C, aligned_B, aligned_C,
         generator.ex_wavelens, generator.em_wavelens,
-        save_path='notebooks/phase2_resolved_profiles.png'
+        save_path='notebooks/phase3_resolved_profiles.png'
     )
     
-    # Compute full reconstructed tensor to visualize heatmaps
-    X_reconstructed = np.einsum('ir,jr,kr->ijk', aligned_A, aligned_B, aligned_C)
+    # Retrieve the learned 2D IFE matrix
+    gamma_learned = model.get_learned_ife_matrix()
+    
+    # Compute full reconstructed observed tensor to visualize heatmaps
+    X_reconstructed = np.einsum('ir,jr,kr->ijk', aligned_A, aligned_B, aligned_C) * gamma_learned[np.newaxis, :, :]
     
     # Save heatmap plot
     plot_eem_heatmaps(
@@ -266,7 +283,16 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
         X_reconstructed=X_reconstructed[0],
         ex_wavelens=generator.ex_wavelens,
         em_wavelens=generator.em_wavelens,
-        save_path='notebooks/phase2_eem_heatmaps.png'
+        save_path='notebooks/phase3_eem_heatmaps.png'
+    )
+    
+    # Save IFE comparison plot
+    plot_ife_comparison(
+        true_gamma=gamma_true,
+        pred_gamma=gamma_learned,
+        ex_wavelens=generator.ex_wavelens,
+        em_wavelens=generator.em_wavelens,
+        save_path='notebooks/phase3_ife_comparison.png'
     )
     
     # 7. Print and return metrics

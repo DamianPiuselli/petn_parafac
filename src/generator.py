@@ -121,24 +121,47 @@ class EEMGenerator:
                     
         return scatter, mask
 
-    def generate_dataset(self, noise_std=0.01, corrupt_scatter=False):
+    def generate_ife_attenuation(self):
         """
-        Generates synthetic EEM data with additive Gaussian noise and optional scattering.
+        Generates a 2D attenuation matrix gamma of shape (num_ex, num_em)
+        based on the Lakowicz geometric correction formula and background matrix absorbance.
+        
+        Returns:
+            gamma: 2D numpy array of shape (num_ex, num_em) containing values in (0, 1]
+        """
+        # Background CDOM absorption parameters
+        c_bg = 0.25
+        eta = 0.015
+        lambda_0 = 240.0
+        
+        # Absorbance profile at excitation and emission wavelengths
+        A_ex = c_bg * np.exp(-eta * (self.ex_wavelens - lambda_0))
+        A_em = c_bg * np.exp(-eta * (self.em_wavelens - lambda_0))
+        
+        # Calculate attenuation matrix: 10^(-(A_ex + A_em))
+        gamma = 10.0 ** (-(A_ex[:, np.newaxis] + A_em[np.newaxis, :]))
+        return gamma
+
+    def generate_dataset(self, noise_std=0.01, corrupt_scatter=False, corrupt_ife=False):
+        """
+        Generates synthetic EEM data with additive Gaussian noise and optional scattering/IFE.
         
         Args:
             noise_std: standard deviation of homoscedastic noise.
             corrupt_scatter: if True, inject Rayleigh and Raman scatter lines and output a mask.
+            corrupt_ife: if True, apply Inner Filter Effect (matrix absorption attenuation) to X_true.
             
         Returns:
             dataset: dict containing:
                 'X': 3D numpy array of shape (num_samples, num_ex, num_em)
-                'X_true': 3D numpy array of shape (num_samples, num_ex, num_em) without noise/scatter
+                'X_true': 3D numpy array of shape (num_samples, num_ex, num_em) without noise/scatter/IFE
                 'A': ground truth scores, shape (num_samples, num_components)
                 'B': ground truth excitation, shape (num_ex, num_components)
                 'C': ground truth emission, shape (num_em, num_components)
                 'ex': excitation wavelengths
                 'em': emission wavelengths
                 'mask': 2D numpy array of shape (num_ex, num_em) or None
+                'gamma': 2D numpy array of shape (num_ex, num_em) or None
         """
         A = self.generate_scores()
         B, C = self.generate_profiles()
@@ -146,19 +169,26 @@ class EEMGenerator:
         # Calculate tensor outer product (PARAFAC model)
         X_true = np.einsum('ir,jr,kr->ijk', A, B, C)
         
+        # Apply IFE if requested
+        gamma = None
+        if corrupt_ife:
+            gamma = self.generate_ife_attenuation()
+            X_signal = X_true * gamma[np.newaxis, :, :]
+        else:
+            X_signal = X_true.copy()
+            
         mask = None
         if corrupt_scatter:
             scatter_2d, mask_2d = self.generate_scatter_and_mask()
             # Add scattering to every sample
-            X_true_corrupted = X_true + scatter_2d[np.newaxis, :, :]
+            X_corrupted = X_signal + scatter_2d[np.newaxis, :, :]
             mask = mask_2d
-            
-            # Add noise to the corrupted tensor
-            noise = self.rng.normal(0.0, noise_std, size=X_true_corrupted.shape)
-            X = X_true_corrupted + noise
         else:
-            noise = self.rng.normal(0.0, noise_std, size=X_true.shape)
-            X = X_true + noise
+            X_corrupted = X_signal
+            
+        # Add noise
+        noise = self.rng.normal(0.0, noise_std, size=X_corrupted.shape)
+        X = X_corrupted + noise
             
         return {
             'X': X,
@@ -168,5 +198,6 @@ class EEMGenerator:
             'C': C,
             'ex': self.ex_wavelens,
             'em': self.em_wavelens,
-            'mask': mask
+            'mask': mask,
+            'gamma': gamma
         }

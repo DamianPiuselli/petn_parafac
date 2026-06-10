@@ -116,3 +116,41 @@ def plot_eem_heatmaps(X_clean, X_corrupted, mask, X_reconstructed, ex_wavelens, 
         plt.show()
     plt.close()
 
+def plot_ife_comparison(true_gamma, pred_gamma, ex_wavelens, em_wavelens, save_path=None):
+    """
+    Plots a 2-panel comparison of the true vs. learned IFE matrix (gamma).
+    
+    Args:
+        true_gamma: 2D numpy array of shape (num_ex, num_em)
+        pred_gamma: 2D numpy array of shape (num_ex, num_em)
+        ex_wavelens: array of excitation wavelengths
+        em_wavelens: array of emission wavelengths
+        save_path: path to save the generated image, or None to display it.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    EM, EX = np.meshgrid(em_wavelens, ex_wavelens)
+    
+    # 1. True Attenuation
+    c1 = axes[0].contourf(EM, EX, true_gamma, levels=50, cmap='inferno', vmin=0.0, vmax=1.0)
+    fig.colorbar(c1, ax=axes[0], label='Attenuation Factor (gamma)')
+    axes[0].set_title('True IFE Attenuation Matrix')
+    axes[0].set_xlabel('Emission Wavelength (nm)')
+    axes[0].set_ylabel('Excitation Wavelength (nm)')
+    
+    # 2. Learned Attenuation
+    c2 = axes[1].contourf(EM, EX, pred_gamma, levels=50, cmap='inferno', vmin=0.0, vmax=1.0)
+    fig.colorbar(c2, ax=axes[1], label='Attenuation Factor (gamma)')
+    axes[1].set_title('Learned IFE Attenuation Matrix')
+    axes[1].set_xlabel('Emission Wavelength (nm)')
+    axes[1].set_ylabel('Excitation Wavelength (nm)')
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+        print(f"IFE comparison plot saved to {save_path}")
+    else:
+        plt.show()
+    plt.close()
+
+
