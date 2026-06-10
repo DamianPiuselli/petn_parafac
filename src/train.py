@@ -138,6 +138,7 @@ def match_and_align_components(true_A, true_B, true_C, pred_A, pred_B, pred_C):
     r2_A = []
     r2_B = []
     r2_C = []
+    scale_factors = []
     for r in range(num_components):
         # Apply optimal linear scale matching on scores to resolve global scaling ambiguity
         # s_r = sum(true * pred) / sum(pred^2)
@@ -146,6 +147,7 @@ def match_and_align_components(true_A, true_B, true_C, pred_A, pred_B, pred_C):
         s_r = np.sum(true_col * pred_col) / (np.sum(pred_col ** 2) + 1e-8)
         scaled_pred_col = s_r * pred_col
         aligned_pred_A[:, r] = scaled_pred_col
+        scale_factors.append(s_r)
         
         # Now compute R^2
         ss_res_a = np.sum((true_col - scaled_pred_col) ** 2)
@@ -168,17 +170,19 @@ def match_and_align_components(true_A, true_B, true_C, pred_A, pred_B, pred_C):
     return aligned_pred_A, aligned_pred_B, aligned_pred_C, {
         'r2_A': r2_A,
         'r2_B': r2_B,
-        'r2_C': r2_C
+        'r2_C': r2_C,
+        'pred_ind': pred_ind,
+        'scale_factors': scale_factors
     }
 
 
-def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
+def train_pinn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
     """
-    Runs the full Phase 1 training pipeline:
-    1. Generates synthetic data.
-    2. Builds the model.
-    3. Trains on coordinates.
-    4. Evaluates component alignment and spectral recovery.
+    Runs the full Phase 3 training pipeline:
+    1. Generates synthetic EEM data with combined scattering and IFE.
+    2. Builds the physical cuvette model with registered background buffers.
+    3. Trains on coordinates in full-batch mode.
+    4. Evaluates component alignment, spectral recovery, and absorption profile resolution.
     """
     # Fix random seeds for reproducibility
     torch.manual_seed(seed)
@@ -195,7 +199,8 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
     true_B = data['B']
     true_C = data['C']
     mask_2d = data['mask']
-    gamma_true = data['gamma']
+    E_true = data['E']
+    M_true = data['M']
     
     # Pre-flatten coordinate vectors for fast full-batch training on CPU
     sample_grid, ex_grid, em_grid = np.meshgrid(
@@ -213,6 +218,11 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
     mask_3d = mask_2d[np.newaxis, :, :].repeat(generator.num_samples, axis=0)
     mask_values = torch.tensor(mask_3d.reshape(-1), dtype=torch.float32)
     
+    # Compute true background CDOM absorbances to register as buffers
+    lambda_0 = 240.0
+    A_bg_ex = 0.10 * np.exp(-0.010 * (generator.ex_wavelens - lambda_0))
+    A_bg_em = 0.10 * np.exp(-0.010 * (generator.em_wavelens - lambda_0))
+    
     # 2. Instantiate model
     print("Building PINN model...")
     model = PINNParafac(
@@ -221,17 +231,15 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
         num_em=generator.num_em,
         ex_wavelens=generator.ex_wavelens,
         em_wavelens=generator.em_wavelens,
+        ex_bg=A_bg_ex,
+        em_bg=A_bg_em,
         num_components=generator.num_components
     )
     
-    # Configure optimizer with separate learning rates and L2 regularization for the MLP parameters
-    optimizer = optim.Adam([
-        {'params': [model.sample_embeddings.weight, model.ex_embeddings.weight, model.em_embeddings.weight], 'lr': 0.008},
-        {'params': model.ife_network.parameters(), 'lr': 0.001, 'weight_decay': 1e-4}
-    ])
+    # Simple Adam optimizer for all parameters since they are all physical embeddings
+    optimizer = optim.Adam(model.parameters(), lr=lr)
     
     # 3. Training loop
-    epochs = 1200
     print(f"Training model in full-batch mode for {epochs} epochs...")
     for epoch in range(1, epochs + 1):
         model.train()
@@ -246,7 +254,7 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
         # Enforce positive constraints
         model.project_constraints()
         
-        if epoch % 200 == 0 or epoch == 1:
+        if epoch % 300 == 0 or epoch == 1:
             print(f"Epoch {epoch:04d}/{epochs} - Loss: {loss.item():.6f}")
             
     # 4. Extract trained weights
@@ -255,25 +263,64 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
         pred_A = model.sample_embeddings.weight.cpu().numpy()
         pred_B = model.ex_embeddings.weight.cpu().numpy()
         pred_C = model.em_embeddings.weight.cpu().numpy()
+        pred_E, pred_M = model.get_learned_absorptivities()
+        pred_ex_bg = model.ex_bg.cpu().numpy()
+        pred_em_bg = model.em_bg.cpu().numpy()
         
     # 5. Match and align components
     aligned_A, aligned_B, aligned_C, metrics = match_and_align_components(
         true_A, true_B, true_C, pred_A, pred_B, pred_C
     )
     
-    # 6. Save comparison plot
-    from src.utils import plot_resolved_vs_true_profiles, plot_eem_heatmaps, plot_ife_comparison
+    # 6. Re-align and scale the molar absorptivity profiles using the same permutation index
+    # and inverse scale factors to preserve the absorbance scaling (Abs = A * E)
+    pred_ind = metrics['pred_ind']
+    s_factors = metrics['scale_factors']
+    aligned_E = pred_E[:, pred_ind]
+    aligned_M = pred_M[:, pred_ind]
+    for r in range(generator.num_components):
+        s_r = s_factors[r]
+        aligned_E[:, r] = aligned_E[:, r] / s_r
+        aligned_M[:, r] = aligned_M[:, r] / s_r
+        
+    # Compute R^2 metrics for resolved absorptivities
+    r2_E = []
+    r2_M = []
+    for r in range(generator.num_components):
+        ss_res_e = np.sum((E_true[:, r] - aligned_E[:, r]) ** 2)
+        ss_tot_e = np.sum((E_true[:, r] - np.mean(E_true[:, r])) ** 2)
+        r2_e = 1.0 - (ss_res_e / ss_tot_e) if ss_tot_e > 1e-8 else 0.0
+        r2_E.append(r2_e)
+        
+        ss_res_m = np.sum((M_true[:, r] - aligned_M[:, r]) ** 2)
+        ss_tot_m = np.sum((M_true[:, r] - np.mean(M_true[:, r])) ** 2)
+        r2_m = 1.0 - (ss_res_m / ss_tot_m) if ss_tot_m > 1e-8 else 0.0
+        r2_M.append(r2_m)
+        
+    metrics['r2_E'] = r2_E
+    metrics['r2_M'] = r2_M
+    
+    # 7. Save comparison plots
+    from src.utils import plot_resolved_vs_true_profiles, plot_eem_heatmaps, plot_resolved_absorptivities
     plot_resolved_vs_true_profiles(
         true_B, true_C, aligned_B, aligned_C,
         generator.ex_wavelens, generator.em_wavelens,
         save_path='notebooks/phase3_resolved_profiles.png'
     )
     
-    # Retrieve the learned 2D IFE matrix
-    gamma_learned = model.get_learned_ife_matrix()
+    plot_resolved_absorptivities(
+        E_true, M_true, aligned_E, aligned_M,
+        generator.ex_wavelens, generator.em_wavelens,
+        save_path='notebooks/phase3_resolved_absorptivities.png'
+    )
     
-    # Compute full reconstructed observed tensor to visualize heatmaps
-    X_reconstructed = np.einsum('ir,jr,kr->ijk', aligned_A, aligned_B, aligned_C) * gamma_learned[np.newaxis, :, :]
+    # Calculate reconstructed observed EEM for heatmap display
+    # Abs_ex shape: (num_samples, num_ex)
+    Abs_ex = np.dot(aligned_A, aligned_E.T) + pred_ex_bg[np.newaxis, :]
+    # Abs_em shape: (num_samples, num_em)
+    Abs_em = np.dot(aligned_A, aligned_M.T) + pred_em_bg[np.newaxis, :]
+    gamma_reconstructed = 10.0 ** (-(Abs_ex[:, :, np.newaxis] + Abs_em[:, np.newaxis, :]))
+    X_reconstructed = np.einsum('ir,jr,kr->ijk', aligned_A, aligned_B, aligned_C) * gamma_reconstructed
     
     # Save heatmap plot
     plot_eem_heatmaps(
@@ -286,25 +333,22 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
         save_path='notebooks/phase3_eem_heatmaps.png'
     )
     
-    # Save IFE comparison plot
-    plot_ife_comparison(
-        true_gamma=gamma_true,
-        pred_gamma=gamma_learned,
-        ex_wavelens=generator.ex_wavelens,
-        em_wavelens=generator.em_wavelens,
-        save_path='notebooks/phase3_ife_comparison.png'
-    )
-    
-    # 7. Print and return metrics
+    # 8. Print and return metrics
     print("\n--- Model Evaluation Results ---")
-    print(f"Sample scores (A) R2 scores:      {metrics['r2_A']}")
-    print(f"Excitation loadings (B) R2 scores: {metrics['r2_B']}")
-    print(f"Emission loadings (C) R2 scores:   {metrics['r2_C']}")
+    print(f"Sample scores (A) R2 scores:         {metrics['r2_A']}")
+    print(f"Excitation loadings (B) R2 scores:    {metrics['r2_B']}")
+    print(f"Emission loadings (C) R2 scores:      {metrics['r2_C']}")
+    print(f"Excitation absorptivities (E) R2:     {metrics['r2_E']}")
+    print(f"Emission absorptivities (M) R2:       {metrics['r2_M']}")
     
     avg_r2_B = np.mean(metrics['r2_B'])
     avg_r2_C = np.mean(metrics['r2_C'])
-    print(f"Average Excitation Loading R2:    {avg_r2_B:.4f}")
-    print(f"Average Emission Loading R2:      {avg_r2_C:.4f}")
+    avg_r2_E = np.mean(metrics['r2_E'])
+    avg_r2_M = np.mean(metrics['r2_M'])
+    print(f"Average Excitation Loading R2:       {avg_r2_B:.4f}")
+    print(f"Average Emission Loading R2:         {avg_r2_C:.4f}")
+    print(f"Average Excitation Absorptivity R2:  {avg_r2_E:.4f}")
+    print(f"Average Emission Absorptivity R2:    {avg_r2_M:.4f}")
     
     return {
         'model': model,
@@ -312,6 +356,8 @@ def train_pinn_mvp(epochs=600, lr=0.01, batch_size=512, seed=42):
         'aligned_A': aligned_A,
         'aligned_B': aligned_B,
         'aligned_C': aligned_C,
+        'aligned_E': aligned_E,
+        'aligned_M': aligned_M,
         'metrics': metrics
     }
 

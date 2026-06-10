@@ -116,39 +116,54 @@ def plot_eem_heatmaps(X_clean, X_corrupted, mask, X_reconstructed, ex_wavelens, 
         plt.show()
     plt.close()
 
-def plot_ife_comparison(true_gamma, pred_gamma, ex_wavelens, em_wavelens, save_path=None):
+def plot_resolved_absorptivities(true_E, true_M, pred_E, pred_M, ex_wavelens, em_wavelens, save_path=None):
     """
-    Plots a 2-panel comparison of the true vs. learned IFE matrix (gamma).
+    Plots a comparison of true vs. resolved excitation and emission molar absorptivities.
     
     Args:
-        true_gamma: 2D numpy array of shape (num_ex, num_em)
-        pred_gamma: 2D numpy array of shape (num_ex, num_em)
+        true_E: shape (num_ex, num_components)
+        true_M: shape (num_em, num_components)
+        pred_E: shape (num_ex, num_components)
+        pred_M: shape (num_em, num_components)
         ex_wavelens: array of excitation wavelengths
         em_wavelens: array of emission wavelengths
         save_path: path to save the generated image, or None to display it.
     """
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    num_components = true_E.shape[1]
     
-    EM, EX = np.meshgrid(em_wavelens, ex_wavelens)
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
     
-    # 1. True Attenuation
-    c1 = axes[0].contourf(EM, EX, true_gamma, levels=50, cmap='inferno', vmin=0.0, vmax=1.0)
-    fig.colorbar(c1, ax=axes[0], label='Attenuation Factor (gamma)')
-    axes[0].set_title('True IFE Attenuation Matrix')
-    axes[0].set_xlabel('Emission Wavelength (nm)')
-    axes[0].set_ylabel('Excitation Wavelength (nm)')
+    # 1. Excitation Absorptivities
+    for r in range(num_components):
+        label_true = f'True Abs Comp {r+1}'
+        label_pred = f'Resolved Abs Comp {r+1}'
+        axes[0].plot(ex_wavelens, true_E[:, r], label=label_true, color=colors[r % len(colors)], linestyle='--', alpha=0.7)
+        axes[0].plot(ex_wavelens, pred_E[:, r], label=label_pred, color=colors[r % len(colors)], linewidth=2)
+        
+    axes[0].set_title('Excitation Molar Absorptivities (E)')
+    axes[0].set_xlabel('Wavelength (nm)')
+    axes[0].set_ylabel('Absorptivity')
+    axes[0].grid(True, linestyle=':', alpha=0.6)
+    axes[0].legend()
     
-    # 2. Learned Attenuation
-    c2 = axes[1].contourf(EM, EX, pred_gamma, levels=50, cmap='inferno', vmin=0.0, vmax=1.0)
-    fig.colorbar(c2, ax=axes[1], label='Attenuation Factor (gamma)')
-    axes[1].set_title('Learned IFE Attenuation Matrix')
-    axes[1].set_xlabel('Emission Wavelength (nm)')
-    axes[1].set_ylabel('Excitation Wavelength (nm)')
+    # 2. Emission Absorptivities
+    for r in range(num_components):
+        label_true = f'True Abs Comp {r+1}'
+        label_pred = f'Resolved Abs Comp {r+1}'
+        axes[1].plot(em_wavelens, true_M[:, r], label=label_true, color=colors[r % len(colors)], linestyle='--', alpha=0.7)
+        axes[1].plot(em_wavelens, pred_M[:, r], label=label_pred, color=colors[r % len(colors)], linewidth=2)
+        
+    axes[1].set_title('Emission Molar Absorptivities (M)')
+    axes[1].set_xlabel('Wavelength (nm)')
+    axes[1].set_ylabel('Absorptivity')
+    axes[1].grid(True, linestyle=':', alpha=0.6)
+    axes[1].legend()
     
     plt.tight_layout()
     if save_path:
         plt.savefig(save_path, dpi=300)
-        print(f"IFE comparison plot saved to {save_path}")
+        print(f"Molar absorptivities comparison plot saved to {save_path}")
     else:
         plt.show()
     plt.close()
