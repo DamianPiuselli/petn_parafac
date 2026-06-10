@@ -9,24 +9,34 @@ This project bridges classical multi-way chemometrics (like PARAFAC) with modern
 ## 1. Motivations & Physical Principles
 
 Traditional chemometric calibration (e.g., linear PARAFAC) assumes a strict trilinear structure ($I \times J \times K$) of clean chemical signals. However, real-world laboratory EEM data violates this assumption due to two major physical interferences:
-1.  **Optical Scattering:** 1st and 2nd order Rayleigh scattering ($\lambda_{em} = \lambda_{ex}$ and $\lambda_{em} = 2\lambda_{ex}$) and solvent Raman scattering create high-intensity diagonal bands that corrupt underlying chemical data.
+1.  **Optical Scattering:** 1st and 2nd order Rayleigh scattering ($\lambda_{\text{em}} = \lambda_{\text{ex}}$ and $\lambda_{\text{em}} = 2\lambda_{\text{ex}}$) and solvent Raman scattering create high-intensity diagonal bands that corrupt underlying chemical data.
 2.  **Inner Filter Effect (IFE):** Matrix absorption attenuates both excitation and emission light, causing a non-linear concentration-dependent suppression and distortion of fluorescence intensity.
 
 ### The Physics-Informed Cuvette Architecture
 The model embeds physical laws directly into the network graph:
+
 *   **Trilinear Core (White-Box):** Maps inputs to non-negative embedding tables representing Sample Scores ($A$), Excitation Loadings ($B$), and Emission Loadings ($C$), combined via a tensor outer product:
-    $$I_{\text{true}}(i,j,k) = \sum_{r=1}^{R} a_{ir} \cdot b_{jr} \cdot c_{kr}$$
-*   **Cuvette Attenuation Layer (Gray-Box):** Evaluates the Beer-Lambert and Lakowicz equations using a learnable molar absorptivity scale ($\alpha_r$) and registered solvent background absorbances ($Abs_{bg}$):
-    $$Abs_{ex, i}(j) = \sum_{r=1}^R a_{ir} \cdot (\alpha_r \cdot B_{jr}) + Abs_{bg, ex}(j)$$
-    $$Abs_{em, i}(k) = Abs_{bg, em}(k) \quad (\text{Emission absorptivity } M = 0 \text{ due to Stokes Shift})$$
-    $$\gamma_i(j, k) = 10^{-(Abs_{ex, i}(j) + Abs_{em, i}(k))}$$
-    $$\hat{I}_{\text{obs}}(i, j, k) = I_{\text{true}}(i, j, k) \times \gamma_i(j, k)$$
+
+$$I_{\text{true}}(i,j,k) = \sum_{r=1}^{R} a_{ir} \cdot b_{jr} \cdot c_{kr}$$
+
+*   **Cuvette Attenuation Layer (Gray-Box):** Evaluates the Beer-Lambert and Lakowicz equations using a learnable molar absorptivity scale ($\alpha_r$) and registered solvent background absorbances ($\text{Abs}_{\text{bg}}$):
+
+$$\text{Abs}_{\text{ex}, i}(j) = \sum_{r=1}^R a_{ir} \cdot (\alpha_r \cdot B_{jr}) + \text{Abs}_{\text{bg}, \text{ex}}(j)$$
+
+$$\text{Abs}_{\text{em}, i}(k) = \text{Abs}_{\text{bg}, \text{em}}(k) \quad (\text{Emission absorptivity } M = 0 \text{ due to Stokes Shift})$$
+
+$$\gamma_i(j, k) = 10^{-(\text{Abs}_{\text{ex}, i}(j) + \text{Abs}_{\text{em}, i}(k))}$$
+
+$$\hat{I}_{\text{obs}}(i, j, k) = I_{\text{true}}(i, j, k) \times \gamma_i(j, k)$$
+
 *   **Custom Masked Loss:** Accepts a binary mask ($W$) which equals `0` on the Rayleigh/Raman scattering diagonals. Gradients on these diagonals are element-wise multiplied by $W$ during backpropagation, blinding the trilinear core to the artifacts and forcing it to smoothly interpolate the true chemical signal underneath.
 
 ### Resolving the Scaling Degeneracy
-By registering the background solvent absorbances ($ex\_bg$ and $em\_bg$) as **fixed buffers** (simulating standard laboratory blank subtraction), we break a mathematical scaling degeneracy:
-$$C_{kr} \rightarrow C_{kr} \cdot 10^{\delta_k} \quad \text{and} \quad Abs_{bg, em}(k) \rightarrow Abs_{bg, em}(k) + \delta_k$$
-This anchors the scores ($A$) and loading profiles ($B, C$) preventing component warping and ensuring unique, physically interpretable solutions.
+By registering the background solvent absorbances (`ex_bg` and `em_bg`) as **fixed buffers** (simulating standard laboratory blank subtraction), we break a mathematical scaling degeneracy:
+
+$$C_{kr} \rightarrow C_{kr} \cdot 10^{\delta_k} \quad \text{and} \quad \text{Abs}_{\text{bg}, \text{em}}(k) \rightarrow \text{Abs}_{\text{bg}, \text{em}}(k) + \delta_k$$
+
+This anchors the scores ($A$) and loading profiles ($B$, $C$) preventing component warping and ensuring unique, physically interpretable solutions.
 
 ---
 
@@ -99,6 +109,6 @@ python src/download_aminoacids.py
 PYTHONPATH=. python src/train_aminoacids.py
 ```
 *   **Outputs:** 
-    *   Prints concentration recovery $R^2$ scores (yielding an average score recovery **$R^2 \approx 0.973$**).
+    *   Prints concentration recovery $R^2$ scores (yielding an average score recovery of $R^2 \approx 0.973$).
     *   Verifies excitation and emission spectra peaks match literature standards.
     *   Saves resolved spectra plots to `notebooks/aminoacids_resolved_profiles.png`.
