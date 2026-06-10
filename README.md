@@ -41,13 +41,14 @@ pinn_parafac/
 │   ├── phase3_eem_heatmaps.png    # Heatmaps showing clean, corrupted, and reconstructed EEMs
 │   ├── phase3_resolved_profiles.png # Resolved loadings vs true loadings (synthetic)
 │   ├── phase3_resolved_absorptivities.png # Molar absorptivities (synthetic)
-│   └── real_resolved_profiles.png # Resolved spectra for the experimental dataset
+│   └── aminoacids_resolved_profiles.png # Resolved spectra for the experimental dataset
 ├── src/
 │   ├── generator.py               # EEM synthetic generator with scatter & Lakowicz IFE
 │   ├── loss.py                    # Custom masked MSE loss implementation
 │   ├── model.py                   # PINNParafac custom model class in PyTorch
 │   ├── train.py                   # Synthetic pipeline training loop
-│   ├── train_real.py              # Experimental benchmark validation script
+│   ├── download_aminoacids.py     # Utility to download the experimental benchmark dataset
+│   ├── train_aminoacids.py        # Experimental benchmark validation script
 │   └── utils.py                   # Visualizations and plotting helpers
 ├── tests/
 │   ├── test_generator.py          # Unit tests for the synthetic data generator
@@ -92,13 +93,12 @@ PYTHONPATH=. python src/train.py
 Downloads, preprocesses, and trains the model on the experimental **Amino Acids** benchmark dataset containing mixtures of Tryptophan, Tyrosine, and Phenylalanine:
 ```bash
 # 1. Download the raw benchmark
-python -c "import urllib.request, zipfile, io; zipfile.ZipFile(io.BytesIO(urllib.request.urlopen(urllib.request.Request('https://sid.erda.dk/share_redirect/AWqL5T6JCZ', headers={'User-Agent': 'Mozilla/5.0'})).read())).extractall('data/')"
-python -c "import zipfile, os; zipfile.ZipFile('data/Amino_Acid_fluo.zip').extractall('data/raw/')"
+python src/download_aminoacids.py
 
 # 2. Run calibration training
-PYTHONPATH=. python src/train_real.py
+PYTHONPATH=. python src/train_aminoacids.py
 ```
 *   **Outputs:** 
     *   Prints concentration recovery $R^2$ scores (yielding an average score recovery **$R^2 \approx 0.973$**).
     *   Verifies excitation and emission spectra peaks match literature standards.
-    *   Saves resolved spectra plots to `notebooks/real_resolved_profiles.png`.
+    *   Saves resolved spectra plots to `notebooks/aminoacids_resolved_profiles.png`.

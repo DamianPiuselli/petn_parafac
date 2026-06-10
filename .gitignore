@@ -17,9 +17,9 @@ htmlcov/
 Thumbs.db
 
 # Data (Ignore actual data files, keep raw directory structure)
-data/*
-!data/raw/
-!data/raw/.gitkeep
+data/**/*.mat
+data/**/*.zip
+data/Amino_Acid_fluo.zip
 
 # IDEs
 .idea/

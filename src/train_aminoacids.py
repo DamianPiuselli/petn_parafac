@@ -14,7 +14,7 @@ from scipy.optimize import linear_sum_assignment
 from src.model import PINNParafac
 from src.loss import masked_mse_loss
 
-def generate_real_scattering_mask(ex_wavelens, em_wavelens):
+def generate_aminoacids_scattering_mask(ex_wavelens, em_wavelens):
     """
     Generates a 2D binary mask of shape (num_ex, num_em) to mask out
     Rayleigh and Raman scattering for the amino acids wavelength grid.
@@ -41,14 +41,14 @@ def generate_real_scattering_mask(ex_wavelens, em_wavelens):
                 
     return mask
 
-def train_real_dataset(epochs=3000, lr=0.008, seed=43):
+def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43):
     """
     Loads amino.mat, trains PINNParafac, and prints/plots evaluation results.
     """
     # 1. Load data
     mat_path = 'data/raw/amino.mat'
     if not os.path.exists(mat_path):
-        raise FileNotFoundError(f"Raw dataset not found at {mat_path}. Run download_dataset.py first.")
+        raise FileNotFoundError(f"Raw dataset not found at {mat_path}. Run src/download_aminoacids.py first.")
         
     print(f"Loading raw dataset from {mat_path}...")
     mat = loadmat(mat_path)
@@ -68,7 +68,7 @@ def train_real_dataset(epochs=3000, lr=0.008, seed=43):
     print(f"Dataset shape: {X.shape} (Samples: {num_samples}, Ex: {num_ex}, Em: {num_em})")
     
     # 2. Generate custom scattering mask
-    mask_2d = generate_real_scattering_mask(ex_wavelens, em_wavelens)
+    mask_2d = generate_aminoacids_scattering_mask(ex_wavelens, em_wavelens)
     
     # Flat coordinate index grid
     sample_grid, ex_grid, em_grid = np.meshgrid(
@@ -215,7 +215,7 @@ def train_real_dataset(epochs=3000, lr=0.008, seed=43):
     
     plt.tight_layout()
     os.makedirs('notebooks', exist_ok=True)
-    plot_path = 'notebooks/real_resolved_profiles.png'
+    plot_path = 'notebooks/aminoacids_resolved_profiles.png'
     plt.savefig(plot_path, dpi=300)
     plt.close()
     print(f"\nResolved profiles plot saved to {plot_path}")
@@ -226,4 +226,4 @@ def train_real_dataset(epochs=3000, lr=0.008, seed=43):
     }
 
 if __name__ == '__main__':
-    train_real_dataset()
+    train_aminoacids_dataset()
