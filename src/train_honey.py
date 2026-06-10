@@ -339,14 +339,60 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     A_norm_centered = pred_A_l2_std
     acc_pls, acc_svc_lin, acc_svc_rbf, acc_lr, acc_rf = evaluate_supervised(A_norm_centered)
     
-    print("\n--- LOO Supervised Classification Accuracy (L2 + Standardized) ---")
+    print("\n--- LOO Supervised Multiclass Botanical Accuracy (L2 + Standardized) ---")
     print(f"PLS-DA (PLS Regression):     {acc_pls*100:.2f}%")
     print(f"SVM (Linear Kernel):         {acc_svc_lin*100:.2f}%")
     print(f"SVM (RBF Kernel):            {acc_svc_rbf*100:.2f}%")
     print(f"Logistic Regression:         {acc_lr*100:.2f}%")
     print(f"Random Forest:               {acc_rf*100:.2f}%")
     
-    # Use the best classifier accuracy for the plot title
+    # Binary classification task: Adulterated (1) vs Authentic (0)
+    # class_ids == 2 represents grouped adulterated honeys
+    y_binary = (class_ids == 2).astype(int)
+    
+    def evaluate_binary(scores):
+        loo = LeaveOneOut()
+        
+        # 1. SVM (Linear)
+        correct_svc_lin = 0
+        for train_idx, test_idx in loo.split(scores):
+            svc = SVC(kernel='linear', C=1.0, class_weight='balanced')
+            svc.fit(scores[train_idx], y_binary[train_idx])
+            pred = svc.predict(scores[test_idx])
+            if pred[0] == y_binary[test_idx[0]]:
+                correct_svc_lin += 1
+        acc_svc_lin_bin = correct_svc_lin / num_samples
+        
+        # 2. SVM (RBF)
+        correct_svc_rbf = 0
+        for train_idx, test_idx in loo.split(scores):
+            svc = SVC(kernel='rbf', C=1.0, class_weight='balanced')
+            svc.fit(scores[train_idx], y_binary[train_idx])
+            pred = svc.predict(scores[test_idx])
+            if pred[0] == y_binary[test_idx[0]]:
+                correct_svc_rbf += 1
+        acc_svc_rbf_bin = correct_svc_rbf / num_samples
+        
+        # 3. Logistic Regression
+        correct_lr = 0
+        for train_idx, test_idx in loo.split(scores):
+            lr = LogisticRegression(class_weight='balanced', max_iter=2000)
+            lr.fit(scores[train_idx], y_binary[train_idx])
+            pred = lr.predict(scores[test_idx])
+            if pred[0] == y_binary[test_idx[0]]:
+                correct_lr += 1
+        acc_lr_bin = correct_lr / num_samples
+        
+        return acc_svc_lin_bin, acc_svc_rbf_bin, acc_lr_bin
+
+    acc_svc_lin_bin, acc_svc_rbf_bin, acc_lr_bin = evaluate_binary(A_norm_centered)
+    
+    print("\n--- LOO Supervised Binary Adulteration Accuracy (L2 + Standardized) ---")
+    print(f"SVM (Linear Kernel):         {acc_svc_lin_bin*100:.2f}%")
+    print(f"SVM (RBF Kernel):            {acc_svc_rbf_bin*100:.2f}%")
+    print(f"Logistic Regression:         {acc_lr_bin*100:.2f}%")
+    
+    # Use the best multiclass classifier accuracy for the plot title
     classification_acc_norm = max(acc_pls, acc_svc_lin, acc_svc_rbf, acc_lr, acc_rf)
     
     # PCA project
