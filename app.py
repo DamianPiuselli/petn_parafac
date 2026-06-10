@@ -333,17 +333,7 @@ else:
         else:
             btn_train_toggle.button("Training Complete ✅", disabled=True, use_container_width=True)
 
-    # Trigger Training Loop
-    if st.session_state.is_training:
-        if st.session_state.epoch < total_epochs:
-            loss_val, r2_a, r2_b, r2_c = run_training_step(epochs_per_update, lr, model_type)
-            if ui_delay > 0:
-                time.sleep(ui_delay)
-            st.rerun()
-        else:
-            st.session_state.is_training = False
-            st.success("Training fully complete!")
-            st.rerun()
+
 
     # --- Upper Metric Panel ---
     col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
@@ -375,6 +365,11 @@ else:
     # TAB 1: Fitting metrics (Loss, R2 history curves)
     with tab_fitting:
         st.subheader("Convergence & Alignment Curves")
+        st.markdown(r"""
+        These curves track the optimization process in real-time:
+        * **Loss Curve (Left)**: Shows the masked Mean Squared Error (MSE) loss (log scale) dropping as the model fits the data.
+        * **Similarity Curve (Right)**: Tracks the $R^2$ recovery of Sample Scores ($A$), Excitation Loadings ($B$), and Emission Loadings ($C$) relative to ground truth.
+        """)
         col_f1, col_f2 = st.columns(2)
         
         with col_f1:
@@ -422,6 +417,13 @@ else:
     # TAB 2: Heatmaps Comparison
     with tab_heatmaps:
         st.subheader("2D Excitation-Emission Matrix (EEM) Heatmap Profiles")
+        st.markdown(r"""
+        This panel compares the 2D Excitation-Emission Matrices (EEM) for the selected sample:
+        1. **True Clean EEM**: The target, unattenuated chemical signal.
+        2. **Lab Observed EEM**: The raw simulated matrix corrupted by diagonal scattering bands and non-linear Cuvette IFE. *(The color scale here is clipped at 1.5x clean intensity to allow you to see the underlying chemical peaks beneath the massive scatter peaks).*
+        3. **Reconstructed Observed EEM**: The model's prediction of the corrupted data. Notice that the model successfully ignores the scattering diagonals (blinded via the loss mask) while fitting the underlying EEM profile.
+        4. **Recovered Clean EEM**: The resolved clean chemical signal extracted by the model, demonstrating complete removal of scattering and mathematical reversal of the cuvette attenuation.
+        """)
         
         sample_idx = st.slider("Select Sample Index to Display", min_value=0, max_value=generator.num_samples - 1, value=0)
         
@@ -467,15 +469,14 @@ else:
         )
         
         # Color scale limits
-        max_val = float(np.max(X_true_sample))
-        max_corrupt = float(np.max(X_obs_sample))
+        max_val = float(np.max(X_true_sample)) if np.max(X_true_sample) > 0 else 1.0
         
         # True Clean
         fig_heat.add_trace(go.Contour(z=X_true_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, colorscale="Viridis", zmin=0, zmax=max_val, showscale=False), row=1, col=1)
-        # Observed Corrupted
-        fig_heat.add_trace(go.Contour(z=X_obs_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, colorscale="Viridis", zmin=0, zmax=max_corrupt * 0.7, showscale=False), row=1, col=2)
-        # Model Fit (Observed)
-        fig_heat.add_trace(go.Contour(z=pred_obs_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, colorscale="Viridis", zmin=0, zmax=max_corrupt * 0.7, showscale=False), row=2, col=1)
+        # Observed Corrupted (clip color scale at max_val * 1.5 to make underlying signal visible under scatter)
+        fig_heat.add_trace(go.Contour(z=X_obs_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, colorscale="Viridis", zmin=0, zmax=max_val * 1.5, showscale=False), row=1, col=2)
+        # Model Fit (Observed) (does not contain scattering, so scale it to max_val)
+        fig_heat.add_trace(go.Contour(z=pred_obs_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, colorscale="Viridis", zmin=0, zmax=max_val, showscale=False), row=2, col=1)
         # Recovered Clean
         fig_heat.add_trace(go.Contour(z=pred_true_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, colorscale="Viridis", zmin=0, zmax=max_val, showscale=False), row=2, col=2)
         
@@ -497,6 +498,12 @@ else:
     # TAB 3: Resolved Loadings
     with tab_loadings:
         st.subheader("Component Loading Profiles Verification")
+        st.markdown(r"""
+        This panel compares the ground truth simulated spectral profiles (dashed lines) vs. the model's resolved and aligned loadings (solid lines) for the 3 components:
+        * **Excitation Loadings (Left)**: Normalized excitation profile ($B$) comparison.
+        * **Emission Loadings (Right)**: Normalized emission profile ($C$) comparison.
+        * **Concentration Scores (Bottom)**: True prepared sample scores ($A$) vs. model resolved scores, showing score recovery correlation.
+        """)
         
         if st.session_state.aligned_B is not None:
             fig_load = make_subplots(rows=1, cols=2, subplot_titles=("Excitation Loadings (B)", "Emission Loadings (C)"))
@@ -555,6 +562,11 @@ else:
     # TAB 4: Cuvette & Absorptivities
     with tab_absorbance:
         st.subheader("Physical Parameter Resolution Verification")
+        st.markdown(r"""
+        This panel verifies the physical cuvette parameters learned by the model:
+        * **Molar Absorptivity (Left)**: Resolves the component-specific molar absorptivities ($E = \alpha_r \cdot B$). This is the learnable scaling factor $\alpha_r$ applied to the excitation loading.
+        * **Solvent Background (Right)**: Shows the registered excitation solvent background absorbance ($Abs_{bg, ex}$) profile which anchors the physical scaling of the embeddings.
+        """)
         
         if model_type == "Pure PARAFAC":
             st.warning("⚠️ Pure PARAFAC operates as a linear mathematical decomposition and is physically blind to the Cuvette Inner Filter Effect. No molar absorptivities or solvent background profiles are modeled.")
@@ -607,3 +619,15 @@ else:
                 st.plotly_chart(fig_bg, use_container_width=True)
         else:
             st.info("Start solver training to display resolved physical absorptivities.")
+
+    # --- Training Loop Execution (at bottom to allow rendering of intermediate states) ---
+    if st.session_state.is_training:
+        if st.session_state.epoch < total_epochs:
+            loss_val, r2_a, r2_b, r2_c = run_training_step(epochs_per_update, lr, model_type)
+            if ui_delay > 0:
+                time.sleep(ui_delay)
+            st.rerun()
+        else:
+            st.session_state.is_training = False
+            st.success("Training fully complete!")
+            st.rerun()
