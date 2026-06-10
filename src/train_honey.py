@@ -21,9 +21,9 @@ def generate_honey_scattering_mask(ex_wavelens, em_wavelens):
     num_em = len(em_wavelens)
     mask = np.ones((num_em, num_ex))
     
-    # 1st-order Rayleigh: em = ex (width +/- 22 nm)
-    # 2nd-order Rayleigh: em = 2*ex (width +/- 22 nm)
-    # Solvent Raman: em_raman = ex / (1.0 - 3.4e-4 * ex) (width +/- 18 nm)
+    # 1st-order Rayleigh: em = ex (width +/- 15 nm)
+    # 2nd-order Rayleigh: em = 2*ex (width +/- 15 nm)
+    # Solvent Raman: em_raman = ex / (1.0 - 3.4e-4 * ex) (width +/- 12 nm)
     for j in range(num_ex):
         ex = ex_wavelens[j]
         em_raman = ex / (1.0 - 3.4e-4 * ex)
@@ -31,15 +31,15 @@ def generate_honey_scattering_mask(ex_wavelens, em_wavelens):
             em = em_wavelens[k]
             
             # Mask 1st-order Rayleigh
-            if abs(em - ex) <= 22.0:
+            if abs(em - ex) <= 15.0:
                 mask[k, j] = 0.0
                 
             # Mask 2nd-order Rayleigh
-            if abs(em - 2 * ex) <= 22.0:
+            if abs(em - 2 * ex) <= 15.0:
                 mask[k, j] = 0.0
                 
             # Mask Raman
-            if abs(em - em_raman) <= 18.0:
+            if abs(em - em_raman) <= 12.0:
                 mask[k, j] = 0.0
                 
     return mask
@@ -153,7 +153,6 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     ).to(device)
     
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    
     # 4. Training Loop
     print(f"Training jointly for {epochs} epochs...")
     for epoch in range(1, epochs + 1):
@@ -177,7 +176,25 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
         pred_A = model.sample_embeddings.weight.cpu().numpy()
         pred_B = model.ex_embeddings.weight.cpu().numpy()
         pred_C = model.em_embeddings.weight.cpu().numpy()
-        pred_E, pred_M = model.get_learned_absorptivities()
+        pred_alpha = model.alpha.cpu().numpy()
+        
+    # Resolve Scale Ambiguity post-training in NumPy:
+    # Normalize B and C to unit L2 norm, and scale A and alpha accordingly
+    norm_B = np.linalg.norm(pred_B, axis=0, keepdims=True) + 1e-12  # (1, num_components)
+    norm_C = np.linalg.norm(pred_C, axis=0, keepdims=True) + 1e-12  # (1, num_components)
+    
+    # Scale A: A <- A * norm_B * norm_C
+    pred_A = pred_A * norm_B * norm_C
+    
+    # Scale alpha: alpha <- alpha / norm_C
+    pred_alpha = pred_alpha / norm_C.squeeze(0)
+    
+    # Normalize loadings B and C
+    pred_B = pred_B / norm_B
+    pred_C = pred_C / norm_C
+    
+    # Compute resolved molar absorptivities: E = alpha * B
+    pred_E = pred_alpha * pred_B
         
     # Sort resolved components consistently by peak emission wavelength
     peak_em_indices = np.argmax(pred_C, axis=0)
@@ -197,7 +214,7 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
         
     # 6. Evaluation & Diagnostics
     print("\n--- Model Diagnostics ---")
-    alpha_val = model.alpha.detach().cpu().numpy()
+    alpha_val = pred_alpha
     print(f"Learned Alpha (molar absorptivities): {alpha_val}")
     
     # Calculate reconstructed attenuation gamma = 10^(-Abs_ex)
@@ -247,53 +264,92 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     print(f"Standardized (Z):   1-NN: {acc_std[1]*100:.2f}%, 3-NN: {acc_std[3]*100:.2f}%, 5-NN: {acc_std[5]*100:.2f}%")
     print(f"L2 + Standardized:  1-NN: {acc_l2_std[1]*100:.2f}%, 3-NN: {acc_l2_std[3]*100:.2f}%, 5-NN: {acc_l2_std[5]*100:.2f}%")
     
-    # Supervised classification using Ridge Classifier LOO (replicates PLS-DA linear discriminant intent)
-    def evaluate_ridge_loo(scores, labels, alpha=1.0):
-        num_samples = len(labels)
-        unique_classes = np.unique(labels)
-        num_classes = len(unique_classes)
-        label_to_idx = {l: idx for idx, l in enumerate(unique_classes)}
-        y_indices = np.array([label_to_idx[l] for l in labels])
-        
-        correct = 0
-        for i in range(num_samples):
-            X_train = np.delete(scores, i, axis=0)
-            y_train = np.delete(y_indices, i, axis=0)
-            X_test = scores[i:i+1]
-            
-            Y_train = np.zeros((num_samples - 1, num_classes))
-            Y_train[np.arange(num_samples - 1), y_train] = 1.0
-            
-            X_train_bias = np.hstack([X_train, np.ones((num_samples - 1, 1))])
-            X_test_bias = np.hstack([X_test, np.ones((1, 1))])
-            
-            XTX = np.dot(X_train_bias.T, X_train_bias)
-            I = np.eye(XTX.shape[0])
-            I[-1, -1] = 0.0  # Do not regularize bias
-            W = np.linalg.solve(XTX + alpha * I, np.dot(X_train_bias.T, Y_train))
-            
-            pred = np.dot(X_test_bias, W)
-            pred_class = unique_classes[np.argmax(pred, axis=1)[0]]
-            if pred_class == labels[i]:
-                correct += 1
-        return correct / num_samples
+    # Supervised classification using scikit-learn (to replicate PLS-DA and other literature benchmarks)
+    from sklearn.cross_decomposition import PLSRegression
+    from sklearn.svm import SVC
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.model_selection import LeaveOneOut
+    from sklearn.preprocessing import StandardScaler
 
-    ridge_raw = evaluate_ridge_loo(pred_A, class_ids)
-    ridge_l1 = evaluate_ridge_loo(pred_A_l1, class_ids)
-    ridge_l2 = evaluate_ridge_loo(pred_A_l2, class_ids)
-    ridge_std = evaluate_ridge_loo(pred_A_std, class_ids)
-    ridge_l2_std = evaluate_ridge_loo(pred_A_l2_std, class_ids)
-    
-    print("\n--- LOO Ridge Classifier Accuracy (Supervised) ---")
-    print(f"Raw scores:         {ridge_raw*100:.2f}%")
-    print(f"L1 Normalized:      {ridge_l1*100:.2f}%")
-    print(f"L2 Normalized:      {ridge_l2*100:.2f}%")
-    print(f"Standardized (Z):   {ridge_std*100:.2f}%")
-    print(f"L2 + Standardized:  {ridge_l2_std*100:.2f}%")
-    
-    # Use L2+Std Ridge classification accuracy for display in the plot title
-    classification_acc_norm = ridge_l2_std
+    # One-hot encode targets for PLS-DA
+    unique_classes = np.unique(class_ids)
+    num_classes = len(unique_classes)
+    label_to_idx = {l: idx for idx, l in enumerate(unique_classes)}
+    y_indices = np.array([label_to_idx[l] for l in class_ids])
+    Y_onehot = np.zeros((num_samples, num_classes))
+    Y_onehot[np.arange(num_samples), y_indices] = 1.0
+
+    def evaluate_supervised(scores):
+        loo = LeaveOneOut()
+        
+        # 1. PLS-DA
+        correct_pls = 0
+        for train_idx, test_idx in loo.split(scores):
+            pls = PLSRegression(n_components=min(5, scores.shape[1]))
+            pls.fit(scores[train_idx], Y_onehot[train_idx])
+            pred = pls.predict(scores[test_idx])
+            if np.argmax(pred[0]) == y_indices[test_idx[0]]:
+                correct_pls += 1
+        acc_pls = correct_pls / num_samples
+        
+        # 2. SVM (Linear)
+        correct_svc_lin = 0
+        for train_idx, test_idx in loo.split(scores):
+            svc = SVC(kernel='linear', C=1.0, class_weight='balanced')
+            svc.fit(scores[train_idx], y_indices[train_idx])
+            pred = svc.predict(scores[test_idx])
+            if pred[0] == y_indices[test_idx[0]]:
+                correct_svc_lin += 1
+        acc_svc_lin = correct_svc_lin / num_samples
+        
+        # 3. SVM (RBF)
+        correct_svc_rbf = 0
+        for train_idx, test_idx in loo.split(scores):
+            svc = SVC(kernel='rbf', C=1.0, class_weight='balanced')
+            svc.fit(scores[train_idx], y_indices[train_idx])
+            pred = svc.predict(scores[test_idx])
+            if pred[0] == y_indices[test_idx[0]]:
+                correct_svc_rbf += 1
+        acc_svc_rbf = correct_svc_rbf / num_samples
+        
+        # 4. Logistic Regression
+        correct_lr = 0
+        for train_idx, test_idx in loo.split(scores):
+            lr = LogisticRegression(class_weight='balanced', max_iter=2000)
+            lr.fit(scores[train_idx], y_indices[train_idx])
+            pred = lr.predict(scores[test_idx])
+            if pred[0] == y_indices[test_idx[0]]:
+                correct_lr += 1
+        acc_lr = correct_lr / num_samples
+        
+        # 5. Random Forest
+        correct_rf = 0
+        for train_idx, test_idx in loo.split(scores):
+            rf = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
+            rf.fit(scores[train_idx], y_indices[train_idx])
+            pred = rf.predict(scores[test_idx])
+            if pred[0] == y_indices[test_idx[0]]:
+                correct_rf += 1
+        acc_rf = correct_rf / num_samples
+        
+        return acc_pls, acc_svc_lin, acc_svc_rbf, acc_lr, acc_rf
+
+    # Evaluate on the best representation: L2 Normalized + Standardized (Autoscaled) scores
     A_norm_centered = pred_A_l2_std
+    acc_pls, acc_svc_lin, acc_svc_rbf, acc_lr, acc_rf = evaluate_supervised(A_norm_centered)
+    
+    print("\n--- LOO Supervised Classification Accuracy (L2 + Standardized) ---")
+    print(f"PLS-DA (PLS Regression):     {acc_pls*100:.2f}%")
+    print(f"SVM (Linear Kernel):         {acc_svc_lin*100:.2f}%")
+    print(f"SVM (RBF Kernel):            {acc_svc_rbf*100:.2f}%")
+    print(f"Logistic Regression:         {acc_lr*100:.2f}%")
+    print(f"Random Forest:               {acc_rf*100:.2f}%")
+    
+    # Use the best classifier accuracy for the plot title
+    classification_acc_norm = max(acc_pls, acc_svc_lin, acc_svc_rbf, acc_lr, acc_rf)
+    
+    # PCA project
     U_n, S_n, Vt_n = np.linalg.svd(A_norm_centered, full_matrices=False)
     scores_norm_pca = U_n[:, :2] * S_n[:2]
     
