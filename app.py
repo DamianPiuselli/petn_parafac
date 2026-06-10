@@ -92,6 +92,59 @@ total_epochs = st.sidebar.number_input("Total Training Epochs", min_value=100, m
 epochs_per_update = st.sidebar.slider("Epochs per UI Update", min_value=10, max_value=500, value=100, step=10)
 ui_delay = st.sidebar.slider("UI Update Delay (seconds)", min_value=0.0, max_value=2.0, value=0.1, step=0.05)
 
+# Rebuild model if dropdown selection changed in st.session_state
+if 'model_type_in_state' in st.session_state and st.session_state.initialized and st.session_state.model_type_in_state != model_type:
+    st.session_state.model_type_in_state = model_type
+    generator = st.session_state.generator
+    dataset = st.session_state.dataset
+    
+    lambda_0 = 240.0
+    A_bg_ex = 0.10 * np.exp(-0.010 * (generator.ex_wavelens - lambda_0))
+    A_bg_em = 0.10 * np.exp(-0.010 * (generator.em_wavelens - lambda_0))
+    
+    torch.manual_seed(42)
+    np.random.seed(42)
+    
+    if model_type == "PINN-PARAFAC":
+        st.session_state.model = PINNParafac(
+            num_samples=generator.num_samples,
+            num_ex=generator.num_ex,
+            num_em=generator.num_em,
+            ex_wavelens=generator.ex_wavelens,
+            em_wavelens=generator.em_wavelens,
+            ex_bg=A_bg_ex,
+            em_bg=A_bg_em,
+            num_components=3
+        )
+    else: # Pure PARAFAC
+        st.session_state.model = PINNParafac(
+            num_samples=generator.num_samples,
+            num_ex=generator.num_ex,
+            num_em=generator.num_em,
+            ex_wavelens=generator.ex_wavelens,
+            em_wavelens=generator.em_wavelens,
+            ex_bg=None,
+            em_bg=None,
+            num_components=3
+        )
+        st.session_state.model.alpha.data.fill_(0.0)
+        st.session_state.model.alpha.requires_grad = False
+        
+    st.session_state.optimizer = optim.Adam(st.session_state.model.parameters(), lr=lr)
+    st.session_state.epoch = 0
+    st.session_state.losses = []
+    st.session_state.r2_a = []
+    st.session_state.r2_b = []
+    st.session_state.r2_c = []
+    st.session_state.aligned_A = None
+    st.session_state.aligned_B = None
+    st.session_state.aligned_C = None
+    st.session_state.aligned_E = None
+    st.session_state.aligned_M = None
+    st.session_state.pred_ex_bg = None
+    st.session_state.pred_em_bg = None
+    st.sidebar.info(f"🔄 Rebuilt solver for {model_type}")
+
 st.sidebar.markdown("---")
 st.sidebar.header("3. Live Operations")
 
@@ -184,6 +237,7 @@ if btn_generate:
     st.session_state.aligned_M = None
     st.session_state.pred_ex_bg = None
     st.session_state.pred_em_bg = None
+    st.session_state.model_type_in_state = model_type
     st.session_state.initialized = True
     
     st.rerun()
@@ -274,13 +328,23 @@ def run_training_step(num_epochs, lr_val, model_arch):
     st.session_state.r2_c.append(avg_r2_c)
     
     # Rescale molar absorptivities using inverse scaling factors (Abs = A * E)
+    # Since scores A absorb the scaling factors max_b and max_c during alignment,
+    # we must divide E by (s_factors[r] * max_b * max_c) to restore correct scale.
     pred_ind = metrics['pred_ind']
     s_factors = metrics['scale_factors']
     aligned_E = pred_E[:, pred_ind].copy()
     aligned_M = pred_M[:, pred_ind].copy()
+    
+    max_bs = [np.max(pred_B[:, r]) for r in range(generator.num_components)]
+    max_cs = [np.max(pred_C[:, r]) for r in range(generator.num_components)]
+    
     for r in range(generator.num_components):
-        aligned_E[:, r] = aligned_E[:, r] / (s_factors[r] + 1e-8)
-        aligned_M[:, r] = aligned_M[:, r] / (s_factors[r] + 1e-8)
+        idx = pred_ind[r]
+        max_b = max_bs[idx] if max_bs[idx] > 1e-8 else 1.0
+        max_c = max_cs[idx] if max_cs[idx] > 1e-8 else 1.0
+        scale_val = s_factors[r] * max_b * max_c
+        aligned_E[:, r] = aligned_E[:, r] / (scale_val + 1e-8)
+        aligned_M[:, r] = aligned_M[:, r] / (scale_val + 1e-8)
         
     st.session_state.aligned_A = aligned_A
     st.session_state.aligned_B = aligned_B
