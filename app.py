@@ -18,81 +18,481 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom premium styling rules
+# --- Define Plotly Styling Config ---
+PLOTLY_THEME_LAYOUT = dict(
+    template="plotly_dark",
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(
+        family="Plus Jakarta Sans, Outfit, sans-serif",
+        color="#c9d1d9"
+    ),
+    xaxis=dict(
+        showgrid=True,
+        gridcolor="rgba(255,255,255,0.05)",
+        linecolor="rgba(255,255,255,0.1)",
+        zerolinecolor="rgba(255,255,255,0.1)",
+        tickfont=dict(color="#8b949e")
+    ),
+    yaxis=dict(
+        showgrid=True,
+        gridcolor="rgba(255,255,255,0.05)",
+        linecolor="rgba(255,255,255,0.1)",
+        zerolinecolor="rgba(255,255,255,0.1)",
+        tickfont=dict(color="#8b949e")
+    ),
+    margin=dict(l=50, r=30, t=50, b=50),
+    legend=dict(
+        bgcolor="rgba(13,17,23,0.6)",
+        bordercolor="rgba(255,255,255,0.05)",
+        borderwidth=1
+    )
+)
+
+# --- Inject Premium Custom CSS ---
 st.markdown("""
 <style>
-    /* Sleek font and container styling */
+    /* Google Fonts Import */
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+    /* Global Body and Font Override */
     .stApp {
-        background-color: #0d1117;
+        background-color: #0b0f19;
         color: #c9d1d9;
+        font-family: 'Plus Jakarta Sans', sans-serif;
     }
-    .css-1d391kg {
-        background-color: #161b22;
+    
+    /* Header Card styling */
+    .header-card {
+        background: linear-gradient(135deg, rgba(22, 27, 34, 0.8) 0%, rgba(13, 17, 23, 0.9) 100%);
+        border: 1px solid rgba(88, 166, 255, 0.15);
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        position: relative;
+        overflow: hidden;
     }
-    h1, h2, h3 {
+    .header-badge {
+        display: inline-block;
+        background: rgba(88, 166, 255, 0.12);
+        color: #58a6ff;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 20px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 12px;
+        border: 1px solid rgba(88, 166, 255, 0.2);
+    }
+    .header-title {
+        font-family: 'Outfit', sans-serif;
+        font-size: 2.2rem;
+        font-weight: 800;
+        background: linear-gradient(90deg, #ffffff 0%, #58a6ff 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin: 0 0 10px 0;
+        letter-spacing: -0.02em;
+    }
+    .header-subtitle {
+        font-size: 1rem;
+        color: #8b949e;
+        line-height: 1.5;
+        margin: 0;
+    }
+    
+    /* Status Bar styling */
+    .status-bar {
+        display: flex;
+        align-items: center;
+        background: rgba(22, 27, 34, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 12px 18px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        backdrop-filter: blur(10px);
+    }
+    .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 12px;
+        display: inline-block;
+    }
+    .status-idle {
+        background-color: #6e7681;
+        box-shadow: 0 0 10px #6e7681;
+    }
+    .status-running {
+        background-color: #58a6ff;
+        box-shadow: 0 0 12px #58a6ff;
+        animation: status-pulse 1.5s infinite;
+    }
+    .status-paused {
+        background-color: #ff7f0e;
+        box-shadow: 0 0 10px #ff7f0e;
+    }
+    .status-complete {
+        background-color: #2ca02c;
+        box-shadow: 0 0 12px #2ca02c;
+    }
+    .status-text {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #e5e7eb;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+    
+    @keyframes status-pulse {
+        0% { transform: scale(0.95); opacity: 0.7; }
+        50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 16px #58a6ff; }
+        100% { transform: scale(0.95); opacity: 0.7; }
+    }
+    
+    /* Control Panel Section */
+    .control-panel-header {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #8b949e;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    /* Metrics Grid & Card styling */
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 16px;
+        margin: 20px 0;
+    }
+    @media (max-width: 1200px) {
+        .metrics-grid {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+    @media (max-width: 768px) {
+        .metrics-grid {
+            grid-template-columns: repeat(1, 1fr);
+        }
+    }
+    .metric-card {
+        background: rgba(22, 27, 34, 0.45);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        padding: 16px;
+        text-align: left;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+    }
+    .metric-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.3);
+    }
+    .metric-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+    }
+    
+    /* Metric specific color bars */
+    .epoch-card::before { background: #58a6ff; }
+    .loss-card::before { background: #8b949e; }
+    .scores-card::before { background: #ff7f0e; }
+    .ex-card::before { background: #2ca02c; }
+    .em-card::before { background: #d62728; }
+    
+    .epoch-card:hover { border-color: rgba(88, 166, 255, 0.3); }
+    .loss-card:hover { border-color: rgba(139, 148, 158, 0.3); }
+    .scores-card:hover { border-color: rgba(255, 127, 14, 0.3); }
+    .ex-card:hover { border-color: rgba(44, 160, 44, 0.3); }
+    .em-card:hover { border-color: rgba(214, 39, 40, 0.3); }
+
+    .metric-lbl {
+        font-size: 0.75rem;
+        color: #8b949e;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 600;
+    }
+    .metric-val {
+        font-size: 1.7rem;
+        font-weight: 800;
+        margin-top: 8px;
+        margin-bottom: 4px;
+        font-family: 'Outfit', sans-serif;
+    }
+    .metric-total {
+        font-size: 0.95rem;
+        color: #8b949e;
+        font-weight: 400;
+    }
+    .metric-trend {
+        font-size: 0.72rem;
+        color: #6e7681;
+    }
+    
+    /* Interactive Streamlit Button Styling Overrides */
+    div[data-testid="stButton"] button {
+        background: linear-gradient(135deg, #1f2937, #111827) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        color: #e5e7eb !important;
+        border-radius: 8px !important;
+        padding: 10px 18px !important;
+        font-weight: 600 !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        width: 100% !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15) !important;
+    }
+    div[data-testid="stButton"] button:hover {
+        border-color: #58a6ff !important;
+        color: #58a6ff !important;
+        box-shadow: 0 0 15px rgba(88, 166, 255, 0.2) !important;
+        transform: translateY(-2px) !important;
+    }
+    div[data-testid="stButton"] button:active {
+        transform: translateY(0px) !important;
+    }
+    
+    /* Primary buttons (e.g. Start/Pause Solver) */
+    div[data-testid="stButton"] button[kind="primary"] {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+        border: none !important;
+        color: white !important;
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4) !important;
+    }
+    div[data-testid="stButton"] button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+        box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5) !important;
+    }
+    
+    /* Onboarding / Educational Layout styling */
+    .welcome-card {
+        background: linear-gradient(135deg, rgba(88, 166, 255, 0.08), rgba(30, 41, 59, 0.35));
+        border: 1px solid rgba(88, 166, 255, 0.18);
+        border-radius: 14px;
+        padding: 24px;
+        margin-bottom: 24px;
+        backdrop-filter: blur(12px);
+    }
+    .welcome-card h2 {
+        margin-top: 0;
         color: #58a6ff !important;
         font-family: 'Outfit', sans-serif;
     }
-    .metric-card {
-        background: #1f242c;
-        border: 1px solid #30363d;
-        border-radius: 8px;
-        padding: 12px 20px;
-        text-align: center;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+    .welcome-card p {
+        color: #c9d1d9;
+        font-size: 0.95rem;
+        line-height: 1.6;
+        margin-bottom: 0;
     }
-    .metric-val {
+    
+    .interference-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-top: 10px;
+    }
+    @media (max-width: 768px) {
+        .interference-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    .interference-card {
+        background: rgba(22, 27, 34, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 14px;
+        padding: 24px;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.15);
+        transition: all 0.3s ease;
+        display: flex;
+        flex-direction: column;
+    }
+    .interference-card:hover {
+        transform: translateY(-3px);
+        border-color: rgba(88, 166, 255, 0.15);
+        box-shadow: 0 12px 40px rgba(88, 166, 255, 0.05);
+    }
+    .card-icon {
         font-size: 1.8rem;
-        font-weight: 700;
-        color: #58a6ff;
-        margin: 5px 0;
+        margin-bottom: 12px;
     }
-    .metric-lbl {
-        font-size: 0.85rem;
-        color: #8b949e;
+    .interference-card h3 {
+        margin-top: 0;
+        font-size: 1.25rem;
+        color: #58a6ff !important;
+        font-family: 'Outfit', sans-serif;
+    }
+    .interference-card p {
+        font-size: 0.9rem;
+        line-height: 1.5;
+        color: #c9d1d9;
+        margin-bottom: 12px;
+    }
+    .card-tag {
+        background: rgba(88, 166, 255, 0.12);
+        color: #58a6ff;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        align-self: flex-start;
+        margin-bottom: 12px;
         text-transform: uppercase;
         letter-spacing: 0.05em;
+        border: 1px solid rgba(88, 166, 255, 0.15);
     }
-    .stTabs [data-baseweb="tab"] {
-        color: #8b949e;
-        border-bottom: 2px solid transparent;
-        font-weight: 600;
-        padding: 10px 20px;
+    .card-action {
+        font-size: 0.85rem !important;
+        color: #8b949e !important;
+        line-height: 1.4 !important;
+        margin-bottom: 0 !important;
     }
-    .stTabs [data-baseweb="tab"]:hover {
-        color: #58a6ff;
+
+    /* Warning card for Pure PARAFAC */
+    .warning-card {
+        display: flex;
+        gap: 16px;
+        background: rgba(255, 127, 14, 0.08);
+        border: 1px solid rgba(255, 127, 14, 0.22);
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: 10px;
     }
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        color: #58a6ff;
-        border-bottom-color: #58a6ff;
+    .warning-icon {
+        font-size: 1.8rem;
+    }
+    .warning-content h3 {
+        margin-top: 0;
+        color: #ff7f0e !important;
+        font-family: 'Outfit', sans-serif;
+    }
+    .warning-content p {
+        margin: 0;
+        color: #e5e7eb;
+        font-size: 0.9rem;
+        line-height: 1.5;
+    }
+
+    /* Streamlit Tabs Custom Styling Overrides */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: rgba(22, 27, 34, 0.5) !important;
+        border-radius: 10px !important;
+        padding: 5px !important;
+        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        gap: 6px !important;
+        margin-bottom: 20px !important;
+    }
+    .stTabs button[data-baseweb="tab"] {
+        border-radius: 8px !important;
+        background-color: transparent !important;
+        border: none !important;
+        color: #8b949e !important;
+        font-weight: 600 !important;
+        padding: 8px 16px !important;
+        transition: all 0.25s ease !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        font-size: 0.9rem !important;
+    }
+    .stTabs button[data-baseweb="tab"]:hover {
+        color: #58a6ff !important;
+        background-color: rgba(88, 166, 255, 0.06) !important;
+    }
+    .stTabs button[data-baseweb="tab"][aria-selected="true"] {
+        color: #0b0f19 !important;
+        background: linear-gradient(135deg, #58a6ff, #1f77b4) !important;
+        box-shadow: 0 4px 12px rgba(88, 166, 255, 0.25) !important;
+    }
+
+    /* Sidebar Element Adjustments */
+    [data-testid="stSidebar"] {
+        background-color: #0d111b !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+    }
+    [data-testid="stSidebar"] h2 {
+        color: #58a6ff !important;
+        font-size: 0.95rem !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.06em !important;
+        margin-top: 24px !important;
+        margin-bottom: 12px !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+        padding-bottom: 6px !important;
+        font-family: 'Outfit', sans-serif !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stCheckbox"] {
+        background-color: rgba(22, 27, 34, 0.3);
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        margin-bottom: 10px;
+    }
+    [data-testid="stSidebar"] [data-testid="stCheckbox"]:hover {
+        border-color: rgba(88, 166, 255, 0.15);
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🔬 PINN-PARAFAC Gray-Box Cuvette Simulator")
+# --- Main Dashboard Header ---
 st.markdown("""
-This interactive simulator and solver demonstrates how a **Physics-Informed Neural Network (PINN)** resolves overlapping 
-chemical fluorophore loadings, compensates for non-linear **Inner Filter Effects (IFE)** using Beer-Lambert and Lakowicz physical constraints, 
-and blinds out high-intensity **Rayleigh & Raman optical scattering** lines in real-time.
-""")
+<div class="header-card">
+    <div class="header-badge">Physics-Informed Deep Learning</div>
+    <h1 class="header-title">🔬 PINN-PARAFAC Cuvette Simulator</h1>
+    <p class="header-subtitle">
+        An interactive solver and simulator that resolves overlapping chemical fluorophore loadings, 
+        compensates for non-linear Inner Filter Effects (IFE) via physical constraints, and blinds out Rayleigh/Raman scattering diagonals.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 # --- Sidebar Configuration Panels ---
-st.sidebar.header("1. Data Simulation Settings")
-
+st.sidebar.markdown("<h2>1. Data Simulation</h2>", unsafe_allow_html=True)
 noise_std = st.sidebar.slider("Measurement Noise (Std Dev)", min_value=0.0001, max_value=0.05, value=0.005, step=0.001, format="%.4f")
 corrupt_scatter = st.sidebar.checkbox("Corrupt with Scattering (Rayleigh/Raman)", value=True)
 corrupt_ife = st.sidebar.checkbox("Corrupt with Inner Filter Effect (IFE)", value=True)
 
-st.sidebar.markdown("---")
-st.sidebar.header("2. Solver Configuration")
-
+st.sidebar.markdown("<h2>2. Solver Configuration</h2>", unsafe_allow_html=True)
 model_type = st.sidebar.selectbox("Model Architecture", ["PINN-PARAFAC", "Pure PARAFAC"])
 lr = st.sidebar.slider("Learning Rate", min_value=0.001, max_value=0.05, value=0.008, step=0.001, format="%.3f")
 total_epochs = st.sidebar.number_input("Total Training Epochs", min_value=100, max_value=10000, value=2000, step=500)
 epochs_per_update = st.sidebar.slider("Epochs per UI Update", min_value=10, max_value=500, value=100, step=10)
 ui_delay = st.sidebar.slider("UI Update Delay (seconds)", min_value=0.0, max_value=2.0, value=0.1, step=0.05)
 
-# Rebuild model if dropdown selection changed in st.session_state
+# --- Initialize Session State Variables ---
+if 'initialized' not in st.session_state:
+    st.session_state.initialized = False
+    st.session_state.epoch = 0
+    st.session_state.is_training = False
+    st.session_state.losses = []
+    st.session_state.r2_a = []
+    st.session_state.r2_b = []
+    st.session_state.r2_c = []
+    st.session_state.model = None
+    st.session_state.optimizer = None
+    st.session_state.dataset = None
+    st.session_state.generator = None
+    st.session_state.aligned_A = None
+    st.session_state.aligned_B = None
+    st.session_state.aligned_C = None
+    st.session_state.aligned_E = None
+    st.session_state.aligned_M = None
+    st.session_state.pred_ex_bg = None
+    st.session_state.pred_em_bg = None
+
+# --- Rebuild model on-the-fly if configuration changes ---
 if 'model_type_in_state' in st.session_state and st.session_state.initialized and st.session_state.model_type_in_state != model_type:
     st.session_state.model_type_in_state = model_type
     generator = st.session_state.generator
@@ -145,38 +545,77 @@ if 'model_type_in_state' in st.session_state and st.session_state.initialized an
     st.session_state.pred_em_bg = None
     st.sidebar.info(f"🔄 Rebuilt solver for {model_type}")
 
-st.sidebar.markdown("---")
-st.sidebar.header("3. Live Operations")
+# --- Helper functions to render custom UI structures ---
+def render_metrics_grid(epoch, total_epochs, loss, r2_score, r2_ex, r2_em):
+    # Determine similarity labels based on values
+    loss_text = f"{loss:.6f}" if loss > 0 else "0.000000"
+    
+    html_content = f"""
+    <div class="metrics-grid">
+        <div class="metric-card epoch-card">
+            <div class="metric-lbl">Epoch</div>
+            <div class="metric-val" style="color: #58a6ff;">{epoch} <span class="metric-total">/ {total_epochs}</span></div>
+            <div class="metric-trend">Solver iterations</div>
+        </div>
+        <div class="metric-card loss-card">
+            <div class="metric-lbl">Masked MSE Loss</div>
+            <div class="metric-val" style="color: #c9d1d9;">{loss_text}</div>
+            <div class="metric-trend">Error function target</div>
+        </div>
+        <div class="metric-card scores-card">
+            <div class="metric-lbl">Scores R² (Concentration)</div>
+            <div class="metric-val" style="color: #ff7f0e;">{r2_score:.4f}</div>
+            <div class="metric-trend">Score vector accuracy</div>
+        </div>
+        <div class="metric-card ex-card">
+            <div class="metric-lbl">Excitation R² (Loadings B)</div>
+            <div class="metric-val" style="color: #2ca02c;">{r2_ex:.4f}</div>
+            <div class="metric-trend">Loading B profile shape</div>
+        </div>
+        <div class="metric-card em-card">
+            <div class="metric-lbl">Emission R² (Loadings C)</div>
+            <div class="metric-val" style="color: #d62728;">{r2_em:.4f}</div>
+            <div class="metric-trend">Loading C profile shape</div>
+        </div>
+    </div>
+    """
+    st.markdown(html_content, unsafe_allow_html=True)
 
-col_op1, col_op2 = st.sidebar.columns(2)
-btn_generate = col_op1.button("Generate Dataset", use_container_width=True)
-btn_reset = col_op2.button("Reset Solver", use_container_width=True)
+def render_status_bar():
+    if not st.session_state.initialized:
+        status_html = """
+        <div class="status-bar">
+            <span class="status-dot status-idle"></span>
+            <span class="status-text">UNINITIALIZED — Configure parameters & Generate a dataset to begin</span>
+        </div>
+        """
+    elif st.session_state.is_training:
+        status_html = f"""
+        <div class="status-bar">
+            <span class="status-dot status-running"></span>
+            <span class="status-text">TRAINING — Epoch {st.session_state.epoch} / {total_epochs}</span>
+        </div>
+        """
+    elif st.session_state.epoch >= total_epochs:
+        status_html = """
+        <div class="status-bar">
+            <span class="status-dot status-complete"></span>
+            <span class="status-text">COMPLETED — Optimization converged successfully</span>
+        </div>
+        """
+    else:
+        status_html = f"""
+        <div class="status-bar">
+            <span class="status-dot status-paused"></span>
+            <span class="status-text">PAUSED — Solver stopped at epoch {st.session_state.epoch} / {total_epochs}</span>
+        </div>
+        """
+    st.markdown(status_html, unsafe_allow_html=True)
 
-btn_train_toggle = st.sidebar.empty()
+# --- Actions Triggers ---
 
-# --- Initialize session state variables ---
-if 'initialized' not in st.session_state:
-    st.session_state.initialized = False
-    st.session_state.epoch = 0
-    st.session_state.is_training = False
-    st.session_state.losses = []
-    st.session_state.r2_a = []
-    st.session_state.r2_b = []
-    st.session_state.r2_c = []
-    st.session_state.model = None
-    st.session_state.optimizer = None
-    st.session_state.dataset = None
-    st.session_state.generator = None
-    st.session_state.aligned_A = None
-    st.session_state.aligned_B = None
-    st.session_state.aligned_C = None
-    st.session_state.aligned_E = None
-    st.session_state.aligned_M = None
-    st.session_state.pred_ex_bg = None
-    st.session_state.pred_em_bg = None
-
-# --- Generate Dataset Action ---
-if btn_generate:
+# Helper to generate dataset
+def action_generate_dataset():
     st.session_state.is_training = False
     
     # Generate data
@@ -239,11 +678,8 @@ if btn_generate:
     st.session_state.pred_em_bg = None
     st.session_state.model_type_in_state = model_type
     st.session_state.initialized = True
-    
-    st.rerun()
 
-# --- Reset Solver Action ---
-if btn_reset and st.session_state.initialized:
+def action_reset_solver():
     st.session_state.is_training = False
     st.session_state.epoch = 0
     st.session_state.losses = []
@@ -265,9 +701,8 @@ if btn_reset and st.session_state.initialized:
     st.session_state.aligned_M = None
     st.session_state.pred_ex_bg = None
     st.session_state.pred_em_bg = None
-    st.rerun()
 
-# --- Training Logic Loop ---
+# --- Training Logic Step ---
 def run_training_step(num_epochs, lr_val, model_arch):
     # Dynamically update optimizer learning rate
     for param_group in st.session_state.optimizer.param_groups:
@@ -327,9 +762,7 @@ def run_training_step(num_epochs, lr_val, model_arch):
     st.session_state.r2_b.append(avg_r2_b)
     st.session_state.r2_c.append(avg_r2_c)
     
-    # Rescale molar absorptivities using inverse scaling factors (Abs = A * E)
-    # Since scores A absorb the scaling factors max_b and max_c during alignment,
-    # we must divide E by (s_factors[r] * max_b * max_c) to restore correct scale.
+    # Rescale molar absorptivities using inverse scaling factors
     pred_ind = metrics['pred_ind']
     s_factors = metrics['scale_factors']
     aligned_E = pred_E[:, pred_ind].copy()
@@ -358,67 +791,95 @@ def run_training_step(num_epochs, lr_val, model_arch):
         
     return loss_val, avg_r2_a, avg_r2_b, avg_r2_c
 
+# --- Render Header & Status bar ---
+render_status_bar()
 
-# --- Main Dashboard Render ---
-if not st.session_state.initialized:
-    st.info("👋 Welcome! Set your parameters and click **'Generate Dataset'** in the sidebar to create mock laboratory mixtures and initialize the solver.")
-    
-    # Render static educational info
-    st.markdown("### How the Gray-Box Model Resolves Spectra Under Interference")
-    
-    col_ed1, col_ed2 = st.columns(2)
-    with col_ed1:
-        st.markdown(r"""
-        **1. Unmasking Scattering Artifacts**
-        * Rayleigh and Raman scattering create massive diagonal bands of light intensity.
-        * Standard linear PARAFAC attempts to fit this scattering as separate chemical components, completely corrupting the resolved loadings.
-        * Our PINN applies a custom **Masked Loss** ($W$) that sets backpropagation gradients to $0$ on these diagonals.
-        * Blinded to the scattering bands, the model uses its rigid outer product constraints to smoothly interpolate the true signals underneath.
-        """)
-    with col_ed2:
-        st.markdown(r"""
-        **2. Reversing non-linear Inner Filter Effects (IFE)**
-        * Highly concentrated mixtures absorb light in the cuvette, reducing fluorescence intensity non-linearly (attenuation).
-        * The PINN embeds a **Cuvette Attenuation Head** inside the computational graph.
-        * It learns molar absorptivities ($\alpha_r$) and computes a physical attenuation factor ($\gamma_i(j,k) = 10^{-\text{Abs}}$) dynamically.
-        * The network calculates observed intensity as $\hat{I}_{obs} = I_{true} \times \gamma$, separating attenuation from the pure emission.
-        """)
-else:
-    # Set up Start/Pause Button in Sidebar
-    if st.session_state.is_training:
-        if btn_train_toggle.button("Pause Solver", use_container_width=True):
+# --- Render main dashboard control panel ---
+st.markdown('<div class="control-panel-header">🎛️ Live Operations Control Panel</div>', unsafe_allow_html=True)
+col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
+
+with col_ctrl1:
+    if st.button("🔄 Generate New Dataset", key="btn_gen_main"):
+        action_generate_dataset()
+        st.rerun()
+
+with col_ctrl2:
+    if not st.session_state.initialized:
+        st.button("▶️ Start Solver", key="btn_start_disabled", disabled=True, kind="primary")
+    elif st.session_state.is_training:
+        if st.button("⏸️ Pause Solver", key="btn_pause_main", kind="primary"):
             st.session_state.is_training = False
             st.rerun()
     else:
         if st.session_state.epoch < total_epochs:
-            if btn_train_toggle.button("Start Solver", use_container_width=True):
+            if st.button("▶️ Start Solver", key="btn_start_main", kind="primary"):
                 st.session_state.is_training = True
                 st.rerun()
         else:
-            btn_train_toggle.button("Training Complete ✅", disabled=True, use_container_width=True)
+            st.button("✅ Solver Complete", key="btn_complete_main", disabled=True)
 
+with col_ctrl3:
+    if st.button("🗑️ Reset Solver State", key="btn_reset_main", disabled=not st.session_state.initialized):
+        action_reset_solver()
+        st.rerun()
 
+st.markdown("---")
 
-    # --- Upper Metric Panel ---
-    col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
+# --- Conditional Dashboard Body Render ---
+if not st.session_state.initialized:
+    # Render premium onboarding screen with cards explaining physical layers
+    st.markdown("""
+    <div class="welcome-card">
+        <h2>👋 Welcome to the Spectroscopy Gray-Box Simulator</h2>
+        <p>
+            Standard multi-way chemometrics (like PARAFAC) assumes ideal, linear trilinear systems.
+            In actual chemical laboratory samples, measurements are heavily corrupted by <strong>optical scattering artifacts</strong> 
+            and non-linear <strong>Inner Filter Effects (IFE)</strong>. 
+            This simulator allows you to generate synthetic spectroscopy datasets with physical interferences, 
+            and solve them using a Physics-Informed Neural Network (PINN) gray-box model.
+        </p>
+    </div>
     
+    <div class="interference-grid">
+        <div class="interference-card">
+            <div class="card-icon">⚡</div>
+            <h3>1. Rayleigh & Raman Scattering diagonals</h3>
+            <p>
+                1st and 2nd order scattering create high-intensity lines across the diagonal. 
+                Traditional models attempt to fit this scattering as separate mathematical components, which warps the physical spectral signatures.
+            </p>
+            <div class="card-tag">Masked Loss Function</div>
+            <p class="card-action">
+                The neural network uses a binary weight mask to blind the loss function on scattering diagonals. 
+                This forces the rigid outer-product trilinear layers to interpolate the true chemical spectra smoothly underneath the scattering.
+            </p>
+        </div>
+        <div class="interference-card">
+            <div class="card-icon">🧪</div>
+            <h3>2. Cuvette Inner Filter Effect (IFE)</h3>
+            <p>
+                Highly concentrated fluorophores absorb both excitation and emission light in the cuvette. 
+                This results in a non-linear attenuation of the observed fluorescence intensity, breaking the trilinear assumption.
+            </p>
+            <div class="card-tag">Gray-Box Cuvette Attenuation Head</div>
+            <p class="card-action">
+                The PINN integrates a physical cuvette attenuation head inside its neural graph. 
+                It learns component-specific molar absorptivities and applies a physical attenuation factor strictly bounded between 0 and 1, mathematically reversing the suppression.
+            </p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    # Extract current state metrics
     current_loss = st.session_state.losses[-1] if st.session_state.losses else 0.0
     r2_score_val = st.session_state.r2_a[-1] if st.session_state.r2_a else 0.0
     r2_ex_val = st.session_state.r2_b[-1] if st.session_state.r2_b else 0.0
     r2_em_val = st.session_state.r2_c[-1] if st.session_state.r2_c else 0.0
-    
-    with col_m1:
-        st.markdown(f'<div class="metric-card"><div class="metric-lbl">Epoch</div><div class="metric-val">{st.session_state.epoch} / {total_epochs}</div></div>', unsafe_allow_html=True)
-    with col_m2:
-        st.markdown(f'<div class="metric-card"><div class="metric-lbl">Masked MSE Loss</div><div class="metric-val">{current_loss:.6f}</div></div>', unsafe_allow_html=True)
-    with col_m3:
-        st.markdown(f'<div class="metric-card"><div class="metric-lbl">Scores R² (Concentration)</div><div class="metric-val">{r2_score_val:.4f}</div></div>', unsafe_allow_html=True)
-    with col_m4:
-        st.markdown(f'<div class="metric-card"><div class="metric-lbl">Excitation R² (Loadings B)</div><div class="metric-val">{r2_ex_val:.4f}</div></div>', unsafe_allow_html=True)
-    with col_m5:
-        st.markdown(f'<div class="metric-card"><div class="metric-lbl">Emission R² (Loadings C)</div><div class="metric-val">{r2_em_val:.4f}</div></div>', unsafe_allow_html=True)
 
-    # --- Visualisation Tabs ---
+    # Render custom metric cards
+    render_metrics_grid(st.session_state.epoch, total_epochs, current_loss, r2_score_val, r2_ex_val, r2_em_val)
+
+    # --- Setup Tabs ---
     tab_fitting, tab_heatmaps, tab_loadings, tab_absorbance = st.tabs([
         "📈 Fitting Metrics", "🗺️ EEM Heatmaps Comparison", "🧬 Resolved Loadings", "🧪 Cuvette & Absorptivities"
     ])
@@ -426,18 +887,18 @@ else:
     generator = st.session_state.generator
     dataset = st.session_state.dataset
 
-    # TAB 1: Fitting metrics (Loss, R2 history curves)
+    # TAB 1: Convergence History Curves
     with tab_fitting:
         st.subheader("Convergence & Alignment Curves")
-        st.markdown(r"""
-        These curves track the optimization process in real-time:
-        * **Loss Curve (Left)**: Shows the masked Mean Squared Error (MSE) loss (log scale) dropping as the model fits the data.
-        * **Similarity Curve (Right)**: Tracks the $R^2$ recovery of Sample Scores ($A$), Excitation Loadings ($B$), and Emission Loadings ($C$) relative to ground truth.
+        st.markdown("""
+        These live graphs map the optimization history:
+        * **Loss Curve (Left)**: Log-scale plot of the masked MSE loss converging towards zero.
+        * **Recovery Profile (Right)**: Recovery of chemical parameters ($R^2$ similarity compared to true ground truth) for Sample Scores ($A$), Excitation loadings ($B$), and Emission loadings ($C$).
         """)
+        
         col_f1, col_f2 = st.columns(2)
         
         with col_f1:
-            # Loss curve
             fig_loss = go.Figure()
             epochs_x = [i * epochs_per_update for i in range(1, len(st.session_state.losses) + 1)]
             if not epochs_x:
@@ -446,21 +907,24 @@ else:
             else:
                 losses_y = st.session_state.losses
                 
-            fig_loss.add_trace(go.Scatter(x=epochs_x, y=losses_y, mode='lines', name='Loss', line=dict(color='#58a6ff', width=2.5)))
+            fig_loss.add_trace(go.Scatter(
+                x=epochs_x, 
+                y=losses_y, 
+                mode='lines', 
+                name='Loss', 
+                line=dict(color='#58a6ff', width=2.5)
+            ))
             fig_loss.update_layout(
                 title="Training Loss Curve (MSE)",
                 xaxis_title="Epoch",
                 yaxis_title="Loss",
-                yaxis_type="log",
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                height=400
+                height=400,
+                **PLOTLY_THEME_LAYOUT
             )
+            fig_loss.update_yaxes(type="log")
             st.plotly_chart(fig_loss, use_container_width=True)
             
         with col_f2:
-            # R2 Recovery Curves
             fig_r2 = go.Figure()
             fig_r2.add_trace(go.Scatter(x=epochs_x, y=st.session_state.r2_a, mode='lines', name='Scores (A)', line=dict(color='#ff7f0e', width=2)))
             fig_r2.add_trace(go.Scatter(x=epochs_x, y=st.session_state.r2_b, mode='lines', name='Excitation (B)', line=dict(color='#2ca02c', width=2)))
@@ -470,42 +934,37 @@ else:
                 title="Ground Truth Component Recovery Profile (R²)",
                 xaxis_title="Epoch",
                 yaxis_title="R² Score Similarity",
-                yaxis_range=[-0.05, 1.05],
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                height=400
+                height=400,
+                **PLOTLY_THEME_LAYOUT
             )
+            fig_r2.update_yaxes(range=[-0.05, 1.05])
             st.plotly_chart(fig_r2, use_container_width=True)
 
     # TAB 2: Heatmaps Comparison
     with tab_heatmaps:
         st.subheader("2D Excitation-Emission Matrix (EEM) Heatmap Profiles")
-        st.markdown(r"""
-        This panel compares the 2D Excitation-Emission Matrices (EEM) for the selected sample:
-        1. **True Clean EEM**: The target, unattenuated chemical signal.
-        2. **Lab Observed EEM**: The raw simulated matrix corrupted by diagonal scattering bands and non-linear Cuvette IFE. *(The color scale here is clipped at 1.5x clean intensity to allow you to see the underlying chemical peaks beneath the massive scatter peaks).*
-        3. **Reconstructed Observed EEM**: The model's prediction of the corrupted data. Notice that the model successfully ignores the scattering diagonals (blinded via the loss mask) while fitting the underlying EEM profile.
-        4. **Recovered Clean EEM**: The resolved clean chemical signal extracted by the model, demonstrating complete removal of scattering and mathematical reversal of the cuvette attenuation.
+        st.markdown("""
+        Compare the resolved components for a selected sample in the generated batch:
+        1. **True Clean EEM**: Target unattenuated fluorescence spectrum.
+        2. **Lab Observed EEM**: Raw simulated measurement, distorted by scattering diagonals and cuvette attenuation.
+        3. **Reconstructed Observed EEM**: Model's prediction. The network successfully ignores the scattering diagonals because of the custom masked loss, while fitting the valid data profile.
+        4. **Recovered Clean EEM**: Pure chemical signal extracted by the model, demonstrating complete removal of scattering and mathematical inversion of the Inner Filter Effect.
         """)
         
         sample_idx = st.slider("Select Sample Index to Display", min_value=0, max_value=generator.num_samples - 1, value=0)
         
-        # Extract data for this sample
         X_true_sample = dataset['X_true'][sample_idx]
         X_obs_sample = dataset['X'][sample_idx]
         
-        # Calculate model reconstructions
         if st.session_state.aligned_A is not None:
-            # 1. Aligned clean reconstruction (unattenuated)
+            # Reconstruct model's ideal clean EEM
             pred_true_sample = np.einsum('r,jr,kr->jk', 
                                          st.session_state.aligned_A[sample_idx], 
                                          st.session_state.aligned_B, 
                                          st.session_state.aligned_C)
             
-            # 2. Predicted observed reconstruction (with model's learned IFE attenuation)
+            # Query the model to reconstruct observed EEM (with learned IFE attenuation)
             with torch.no_grad():
-                # Prepare grid query
                 sample_grid, ex_grid, em_grid = np.meshgrid(
                     np.array([sample_idx]),
                     np.arange(generator.num_ex),
@@ -532,92 +991,119 @@ else:
             )
         )
         
-        # Color scale limits
         max_val = float(np.max(X_true_sample)) if np.max(X_true_sample) > 0 else 1.0
         
-        # True Clean
-        fig_heat.add_trace(go.Contour(z=X_true_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, colorscale="Viridis", zmin=0, zmax=max_val, showscale=False), row=1, col=1)
-        # Observed Corrupted (clip color scale at max_val * 1.5 to make underlying signal visible under scatter)
-        fig_heat.add_trace(go.Contour(z=X_obs_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, colorscale="Viridis", zmin=0, zmax=max_val * 1.5, showscale=False), row=1, col=2)
-        # Model Fit (Observed) (does not contain scattering, so scale it to max_val)
-        fig_heat.add_trace(go.Contour(z=pred_obs_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, colorscale="Viridis", zmin=0, zmax=max_val, showscale=False), row=2, col=1)
-        # Recovered Clean
-        fig_heat.add_trace(go.Contour(z=pred_true_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, colorscale="Viridis", zmin=0, zmax=max_val, showscale=False), row=2, col=2)
+        # Smooth contours with showlines=False for premium look, using beautiful Plasma scheme
+        fig_heat.add_trace(go.Contour(
+            z=X_true_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, 
+            colorscale="Plasma", zmin=0, zmax=max_val, showscale=False, contours=dict(showlines=False)
+        ), row=1, col=1)
+        
+        fig_heat.add_trace(go.Contour(
+            z=X_obs_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, 
+            colorscale="Plasma", zmin=0, zmax=max_val * 1.5, showscale=False, contours=dict(showlines=False)
+        ), row=1, col=2)
+        
+        fig_heat.add_trace(go.Contour(
+            z=pred_obs_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, 
+            colorscale="Plasma", zmin=0, zmax=max_val, showscale=False, contours=dict(showlines=False)
+        ), row=2, col=1)
+        
+        fig_heat.add_trace(go.Contour(
+            z=pred_true_sample.T, x=generator.ex_wavelens, y=generator.em_wavelens, 
+            colorscale="Plasma", zmin=0, zmax=max_val, showscale=False, contours=dict(showlines=False)
+        ), row=2, col=2)
         
         fig_heat.update_layout(
             template="plotly_dark",
-            height=700,
+            height=680,
             paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)"
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="Plus Jakarta Sans, Outfit, sans-serif")
         )
         
-        # Add labels
-        for row in [1, 2]:
-            for col in [1, 2]:
-                fig_heat.update_xaxes(title_text="Excitation Wavelength (nm)", row=row, col=col)
-                fig_heat.update_yaxes(title_text="Emission Wavelength (nm)", row=row, col=col)
-                
+        fig_heat.update_xaxes(title_text="Excitation Wavelength (nm)", showgrid=False, linecolor="rgba(255,255,255,0.1)", tickfont=dict(color="#8b949e"))
+        fig_heat.update_yaxes(title_text="Emission Wavelength (nm)", showgrid=False, linecolor="rgba(255,255,255,0.1)", tickfont=dict(color="#8b949e"))
         st.plotly_chart(fig_heat, use_container_width=True)
 
     # TAB 3: Resolved Loadings
     with tab_loadings:
         st.subheader("Component Loading Profiles Verification")
-        st.markdown(r"""
-        This panel compares the ground truth simulated spectral profiles (dashed lines) vs. the model's resolved and aligned loadings (solid lines) for the 3 components:
-        * **Excitation Loadings (Left)**: Normalized excitation profile ($B$) comparison.
-        * **Emission Loadings (Right)**: Normalized emission profile ($C$) comparison.
-        * **Concentration Scores (Bottom)**: True prepared sample scores ($A$) vs. model resolved scores, showing score recovery correlation.
+        st.markdown("""
+        Compare model-resolved loadings (solid lines) vs. ground truth clean chemical loadings (dashed lines) for the three components:
+        * **Excitation Loadings (Left)**: Recovered components in the Excitation dimension ($B$).
+        * **Emission Loadings (Right)**: Recovered components in the Emission dimension ($C$).
+        * **Concentration Scores (Bottom)**: True sample scores ($A$) plotted against resolved scores, showing linear reconstruction correlation.
         """)
         
         if st.session_state.aligned_B is not None:
             fig_load = make_subplots(rows=1, cols=2, subplot_titles=("Excitation Loadings (B)", "Emission Loadings (C)"))
             
-            colors_comp = ['#1f77b4', '#2ca02c', '#d62728'] # Blue, Green, Red
+            colors_comp = ['#1f77b4', '#2ca02c', '#d62728']
             comp_names = ["Component 1 (Phenanthrene-like)", "Component 2 (Anthracene-like)", "Component 3 (Humic-like)"]
             
             for r in range(generator.num_components):
-                # Excitation True vs Resolved
-                fig_load.add_trace(go.Scatter(x=generator.ex_wavelens, y=dataset['B'][:, r], mode='lines', name=f"True {comp_names[r]}", line=dict(color=colors_comp[r], width=1.5, dash='dash')), row=1, col=1)
-                fig_load.add_trace(go.Scatter(x=generator.ex_wavelens, y=st.session_state.aligned_B[:, r], mode='lines', name=f"Resolved {comp_names[r]}", line=dict(color=colors_comp[r], width=2.5)), row=1, col=1)
+                # Excitation Loading B
+                fig_load.add_trace(go.Scatter(
+                    x=generator.ex_wavelens, y=dataset['B'][:, r], 
+                    mode='lines', name=f"True {comp_names[r]}", 
+                    line=dict(color=colors_comp[r], width=1.5, dash='dash')
+                ), row=1, col=1)
+                fig_load.add_trace(go.Scatter(
+                    x=generator.ex_wavelens, y=st.session_state.aligned_B[:, r], 
+                    mode='lines', name=f"Resolved {comp_names[r]}", 
+                    line=dict(color=colors_comp[r], width=2.5)
+                ), row=1, col=1)
                 
-                # Emission True vs Resolved
-                fig_load.add_trace(go.Scatter(x=generator.em_wavelens, y=dataset['C'][:, r], mode='lines', name=f"True {comp_names[r]}", line=dict(color=colors_comp[r], width=1.5, dash='dash'), showlegend=False), row=1, col=2)
-                fig_load.add_trace(go.Scatter(x=generator.em_wavelens, y=st.session_state.aligned_C[:, r], mode='lines', name=f"Resolved {comp_names[r]}", line=dict(color=colors_comp[r], width=2.5), showlegend=False), row=1, col=2)
+                # Emission Loading C
+                fig_load.add_trace(go.Scatter(
+                    x=generator.em_wavelens, y=dataset['C'][:, r], 
+                    mode='lines', name=f"True {comp_names[r]}", 
+                    line=dict(color=colors_comp[r], width=1.5, dash='dash'), 
+                    showlegend=False
+                ), row=1, col=2)
+                fig_load.add_trace(go.Scatter(
+                    x=generator.em_wavelens, y=st.session_state.aligned_C[:, r], 
+                    mode='lines', name=f"Resolved {comp_names[r]}", 
+                    line=dict(color=colors_comp[r], width=2.5), 
+                    showlegend=False
+                ), row=1, col=2)
                 
             fig_load.update_layout(
                 template="plotly_dark",
-                height=500,
+                height=450,
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                xaxis_title="Wavelength (nm)",
-                yaxis_title="Normalized Intensity"
+                font=dict(family="Plus Jakarta Sans, Outfit, sans-serif")
             )
-            fig_load.update_xaxes(title_text="Wavelength (nm)", row=1, col=1)
-            fig_load.update_xaxes(title_text="Wavelength (nm)", row=1, col=2)
-            fig_load.update_yaxes(title_text="Normalized Intensity", row=1, col=1)
-            fig_load.update_yaxes(title_text="Normalized Intensity", row=1, col=2)
-            
+            fig_load.update_xaxes(title_text="Wavelength (nm)", showgrid=True, gridcolor="rgba(255,255,255,0.05)", linecolor="rgba(255,255,255,0.1)", tickfont=dict(color="#8b949e"))
+            fig_load.update_yaxes(title_text="Normalized Intensity", showgrid=True, gridcolor="rgba(255,255,255,0.05)", linecolor="rgba(255,255,255,0.1)", tickfont=dict(color="#8b949e"))
             st.plotly_chart(fig_load, use_container_width=True)
             
-            # Scores (Concentration recovery)
+            # Scores Scatter
             st.subheader("Relative Concentration Scores (A) Recovery Verification")
             fig_scores = go.Figure()
             for r in range(generator.num_components):
-                fig_scores.add_trace(go.Scatter(x=dataset['A'][:, r], y=st.session_state.aligned_A[:, r], mode='markers', name=comp_names[r], marker=dict(color=colors_comp[r], size=10)))
+                fig_scores.add_trace(go.Scatter(
+                    x=dataset['A'][:, r], y=st.session_state.aligned_A[:, r], 
+                    mode='markers', name=comp_names[r], 
+                    marker=dict(color=colors_comp[r], size=10, line=dict(width=1, color='white'))
+                ))
                 
-            # Add identity diagonal line
             all_scores = np.concatenate([dataset['A'].flatten(), st.session_state.aligned_A.flatten()])
             min_sc, max_sc = float(np.min(all_scores)), float(np.max(all_scores))
-            fig_scores.add_trace(go.Scatter(x=[min_sc, max_sc], y=[min_sc, max_sc], mode='lines', name='Ideal Recovery (y=x)', line=dict(color='#8b949e', dash='dot')))
+            fig_scores.add_trace(go.Scatter(
+                x=[min_sc, max_sc], y=[min_sc, max_sc], 
+                mode='lines', name='Ideal Recovery (y=x)', 
+                line=dict(color='#8b949e', dash='dot')
+            ))
             
             fig_scores.update_layout(
                 title="True Concentration vs. Resolved Model Concentration (Scores A)",
                 xaxis_title="True Prepared Score (Concentration)",
                 yaxis_title="Model Resolved Aligned Score",
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                height=400
+                height=400,
+                **PLOTLY_THEME_LAYOUT
             )
             st.plotly_chart(fig_scores, use_container_width=True)
         else:
@@ -626,14 +1112,27 @@ else:
     # TAB 4: Cuvette & Absorptivities
     with tab_absorbance:
         st.subheader("Physical Parameter Resolution Verification")
-        st.markdown(r"""
-        This panel verifies the physical cuvette parameters learned by the model:
-        * **Molar Absorptivity (Left)**: Resolves the component-specific molar absorptivities ($E = \alpha_r \cdot B$). This is the learnable scaling factor $\alpha_r$ applied to the excitation loading.
-        * **Solvent Background (Right)**: Shows the registered excitation solvent background absorbance ($Abs_{bg, ex}$) profile which anchors the physical scaling of the embeddings.
+        st.markdown("""
+        Verify the physical cuvette attributes learned by the gray-box model:
+        * **Molar Absorptivity (Left)**: Resolved component molar absorptivities ($E = \\alpha_r \\cdot B$). This is the learned physical absorption scaling parameter.
+        * **Solvent Background (Right)**: Model-extracted excitation solvent background profile ($Abs_{bg, ex}$) anchoring embedding scale.
         """)
         
         if model_type == "Pure PARAFAC":
-            st.warning("⚠️ Pure PARAFAC operates as a linear mathematical decomposition and is physically blind to the Cuvette Inner Filter Effect. No molar absorptivities or solvent background profiles are modeled.")
+            # Display premium styled warning card
+            st.markdown("""
+            <div class="warning-card">
+                <div class="warning-icon">⚠️</div>
+                <div class="warning-content">
+                    <h3>Pure PARAFAC Physical Blindness</h3>
+                    <p>
+                        Pure PARAFAC operates as a linear mathematical decomposition and is physically blind to the Cuvette Inner Filter Effect. 
+                        No molar absorptivities or solvent background profiles are modeled. 
+                        Switch to the <strong>PINN-PARAFAC</strong> architecture in the sidebar to enable gray-box attenuation modeling.
+                    </p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         elif st.session_state.aligned_E is not None:
             col_ab1, col_ab2 = st.columns(2)
             colors_comp = ['#1f77b4', '#2ca02c', '#d62728']
@@ -643,24 +1142,27 @@ else:
                 st.subheader("Molar Absorptivity Scaling (E = α_r * B)")
                 fig_abs = go.Figure()
                 
-                # Ground truth molar absorptivities
-                # alpha true: [0.15, 0.10, 0.20]
                 true_E = dataset['E']
                 if true_E is None:
-                    # If IFE corruption was disabled, construct the theoretical true E profile
                     true_E = dataset['B'] * np.array([0.15, 0.10, 0.20])
                 
                 for r in range(generator.num_components):
-                    fig_abs.add_trace(go.Scatter(x=generator.ex_wavelens, y=true_E[:, r], mode='lines', name=f"True α*B {comp_names[r]}", line=dict(color=colors_comp[r], width=1.5, dash='dash')))
-                    fig_abs.add_trace(go.Scatter(x=generator.ex_wavelens, y=st.session_state.aligned_E[:, r], mode='lines', name=f"Resolved α*B {comp_names[r]}", line=dict(color=colors_comp[r], width=2.5)))
+                    fig_abs.add_trace(go.Scatter(
+                        x=generator.ex_wavelens, y=true_E[:, r], 
+                        mode='lines', name=f"True α*B {comp_names[r]}", 
+                        line=dict(color=colors_comp[r], width=1.5, dash='dash')
+                    ))
+                    fig_abs.add_trace(go.Scatter(
+                        x=generator.ex_wavelens, y=st.session_state.aligned_E[:, r], 
+                        mode='lines', name=f"Resolved α*B {comp_names[r]}", 
+                        line=dict(color=colors_comp[r], width=2.5)
+                    ))
                     
                 fig_abs.update_layout(
                     xaxis_title="Excitation Wavelength (nm)",
                     yaxis_title="Molar Absorptivity (L / mol / cm)",
-                    template="plotly_dark",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    height=400
+                    height=400,
+                    **PLOTLY_THEME_LAYOUT
                 )
                 st.plotly_chart(fig_abs, use_container_width=True)
                 
@@ -668,33 +1170,38 @@ else:
                 st.subheader("Solvent Background Absorbance")
                 fig_bg = go.Figure()
                 
-                # Ground truth background
                 lambda_0 = 240.0
                 A_bg_ex = 0.10 * np.exp(-0.010 * (generator.ex_wavelens - lambda_0))
                 
-                fig_bg.add_trace(go.Scatter(x=generator.ex_wavelens, y=A_bg_ex, mode='lines', name="True Excitation Solvent Abs_bg", line=dict(color='#ff7f0e', width=1.5, dash='dash')))
-                fig_bg.add_trace(go.Scatter(x=generator.ex_wavelens, y=st.session_state.pred_ex_bg, mode='lines', name="Registered Excitation Solvent Abs_bg", line=dict(color='#ff7f0e', width=2.5)))
+                fig_bg.add_trace(go.Scatter(
+                    x=generator.ex_wavelens, y=A_bg_ex, 
+                    mode='lines', name="True Excitation Solvent Abs_bg", 
+                    line=dict(color='#ff7f0e', width=1.5, dash='dash')
+                ))
+                fig_bg.add_trace(go.Scatter(
+                    x=generator.ex_wavelens, y=st.session_state.pred_ex_bg, 
+                    mode='lines', name="Registered Excitation Solvent Abs_bg", 
+                    line=dict(color='#ff7f0e', width=2.5)
+                ))
                 
                 fig_bg.update_layout(
                     xaxis_title="Excitation Wavelength (nm)",
                     yaxis_title="Absorbance Units",
-                    template="plotly_dark",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    height=400
+                    height=400,
+                    **PLOTLY_THEME_LAYOUT
                 )
                 st.plotly_chart(fig_bg, use_container_width=True)
         else:
             st.info("Start solver training to display resolved physical absorptivities.")
 
-    # --- Training Loop Execution (at bottom to allow rendering of intermediate states) ---
-    if st.session_state.is_training:
-        if st.session_state.epoch < total_epochs:
-            loss_val, r2_a, r2_b, r2_c = run_training_step(epochs_per_update, lr, model_type)
-            if ui_delay > 0:
-                time.sleep(ui_delay)
-            st.rerun()
-        else:
-            st.session_state.is_training = False
-            st.success("Training fully complete!")
-            st.rerun()
+# --- Training Loop Execution (must run at the end to allow state rendering) ---
+if st.session_state.is_training:
+    if st.session_state.epoch < total_epochs:
+        loss_val, r2_a, r2_b, r2_c = run_training_step(epochs_per_update, lr, model_type)
+        if ui_delay > 0:
+            time.sleep(ui_delay)
+        st.rerun()
+    else:
+        st.session_state.is_training = False
+        st.success("Training fully complete!")
+        st.rerun()
