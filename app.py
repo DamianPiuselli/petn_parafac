@@ -805,14 +805,14 @@ with col_ctrl1:
 
 with col_ctrl2:
     if not st.session_state.initialized:
-        st.button("▶️ Start Solver", key="btn_start_disabled", disabled=True, kind="primary")
+        st.button("▶️ Start Solver", key="btn_start_disabled", disabled=True, type="primary")
     elif st.session_state.is_training:
-        if st.button("⏸️ Pause Solver", key="btn_pause_main", kind="primary"):
+        if st.button("⏸️ Pause Solver", key="btn_pause_main", type="primary"):
             st.session_state.is_training = False
             st.rerun()
     else:
         if st.session_state.epoch < total_epochs:
-            if st.button("▶️ Start Solver", key="btn_start_main", kind="primary"):
+            if st.button("▶️ Start Solver", key="btn_start_main", type="primary"):
                 st.session_state.is_training = True
                 st.rerun()
         else:
