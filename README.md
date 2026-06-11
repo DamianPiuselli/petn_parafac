@@ -1,6 +1,6 @@
-# Physics-Informed Neural Network (PINN) for EEM Spectroscopy
+# Physics-Embedded Tensor Network (PETN) for EEM Spectroscopy
 
-A hybrid, Gray-Box Physics-Informed Neural Network (PINN) designed to resolve Excitation-Emission Matrix (EEM) fluorescence spectroscopy data under severe optical scattering artifacts and non-linear Inner Filter Effects (IFE).
+A hybrid, Gray-Box Physics-Embedded Tensor Network (PETN) designed to resolve Excitation-Emission Matrix (EEM) fluorescence spectroscopy data under severe optical scattering artifacts and non-linear Inner Filter Effects (IFE).
 
 This project bridges classical multi-way chemometrics (such as PARAFAC) with modern deep learning. By restricting the neural network's hypothesis space using physical laws, the model achieves complete mathematical interpretability, rotational uniqueness, and extreme data efficiency—allowing robust calibration on standard small-scale laboratory datasets.
 
@@ -12,7 +12,7 @@ Traditional multi-way calibration (e.g., linear PARAFAC) assumes a strict trilin
 1. **Optical Scattering:** 1st and 2nd order Rayleigh scattering ($\lambda_{\text{em}} = \lambda_{\text{ex}}$ and $\lambda_{\text{em}} = 2\lambda_{\text{ex}}$) and solvent Raman scattering create high-intensity diagonal bands that corrupt underlying chemical data.
 2. **Inner Filter Effect (IFE):** Matrix absorption attenuates both excitation and emission light, causing a non-linear, concentration-dependent suppression and distortion of fluorescence intensity.
 
-### The Physics-Informed Cuvette Architecture
+### The Physics-Embedded Cuvette Architecture
 
 The model embeds physical laws directly into the PyTorch network graph, ensuring hard constraints rather than soft loss penalties:
 
@@ -123,7 +123,7 @@ graph TD
 ## 2. Repository Structure
 
 ```
-pinn_parafac/
+petn_parafac/
 ├── data/
 │   └── raw/
 │       ├── amino.mat              # Experimental Amino Acids benchmark dataset
@@ -139,7 +139,7 @@ pinn_parafac/
 │   ├── download_honey.py          # Utility to download the Copenhagen Honey dataset
 │   ├── generator.py               # EEM synthetic generator with scatter & Lakowicz IFE
 │   ├── loss.py                    # Custom masked MSE loss implementation
-│   ├── model.py                   # PINNParafac custom model class in PyTorch
+│   ├── model.py                   # PETNParafac custom model class in PyTorch
 │   ├── train.py                   # Synthetic pipeline training loop
 │   ├── train_aminoacids.py        # Experimental Amino Acids validation script
 │   ├── train_honey.py             # Copenhagen Honey validation and classifier script
@@ -147,7 +147,7 @@ pinn_parafac/
 ├── tests/
 │   ├── test_generator.py          # Unit tests for the synthetic data generator
 │   ├── test_loss.py               # Unit tests for masked loss
-│   └── test_model.py              # Unit tests for PINN custom model
+│   └── test_model.py              # Unit tests for PETN custom model
 ├── requirements.txt               # Project python package requirements
 └── README.md                      # Project documentation
 ```
@@ -158,8 +158,8 @@ pinn_parafac/
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/username/pinn_parafac.git
-   cd pinn_parafac
+   git clone https://github.com/username/petn_parafac.git
+   cd petn_parafac
    ```
 2. **Install dependencies:**
    ```bash
@@ -199,7 +199,7 @@ An experimental dataset consisting of 5 mixtures containing Tryptophan, Tyrosine
 * **Outputs:** Resolved spectra plots saved to `notebooks/aminoacids_resolved_profiles.png`.
 
 ### 4.3 Copenhagen Honey Benchmark (Experimental)
-A complex real-world benchmark containing 110 honey samples (5 botanical origin classes, including authentic and adulterated samples) resolved using a 6-component PINN model.
+A complex real-world benchmark containing 110 honey samples (5 botanical origin classes, including authentic and adulterated samples) resolved using a 6-component PETN model.
 * **Run Script:**
   ```bash
   # Download the raw benchmark mat file
@@ -218,12 +218,12 @@ A complex real-world benchmark containing 110 honey samples (5 botanical origin 
 
 ## 5. Usage
 
-To apply `PINNParafac` to your custom dataset:
+To apply `PETNParafac` to your custom dataset:
 
 ```python
 import torch
 import torch.optim as optim
-from src.model import PINNParafac
+from src.model import PETNParafac
 from src.loss import masked_mse_loss
 
 # 1. Define dimensions and spectral grids
@@ -240,8 +240,8 @@ em_idx = torch.randint(0, num_em, (1000,))
 target_intensity = torch.rand(1000,)
 mask_values = torch.ones(1000,)  # 0 on scattering bands, 1 elsewhere
 
-# 2. Instantiate the Physics-Informed model
-model = PINNParafac(
+# 2. Instantiate the Physics-Embedded model
+model = PETNParafac(
     num_samples=num_samples,
     num_ex=num_ex,
     num_em=num_em,
@@ -280,7 +280,7 @@ with torch.no_grad():
 
 ## 6. Interactive Cuvette Simulator & Dashboard
 
-An interactive Streamlit-based dashboard is provided to visualize the model training process in real time on synthetic datasets. The dashboard simulates Rayleigh/Raman scattering, Inner Filter Effects (IFE), and homoscedastic noise, allowing you to directly compare `PINN-PARAFAC` against `Classical PARAFAC`.
+An interactive Streamlit-based dashboard is provided to visualize the model training process in real time on synthetic datasets. The dashboard simulates Rayleigh/Raman scattering, Inner Filter Effects (IFE), and homoscedastic noise, allowing you to directly compare `PETN-PARAFAC` against `Classical PARAFAC`.
 
 ### Features
 * **Live Solver Animation**: Watch the model weights align with the ground truth excitation and emission loadings epoch-by-epoch.

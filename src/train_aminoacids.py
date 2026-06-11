@@ -1,6 +1,6 @@
 """
 Training and Validation on Real-World Amino Acids EEM Benchmark Dataset.
-Loads amino.mat, creates custom scattering masks, trains the PINN cuvette model,
+Loads amino.mat, creates custom scattering masks, trains the PETN cuvette model,
 and evaluates resolved concentration scores and loading spectra.
 """
 import os
@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from scipy.io import loadmat
 from scipy.optimize import linear_sum_assignment
 
-from src.model import PINNParafac
+from src.model import PETNParafac
 from src.loss import masked_mse_loss
 
 def generate_aminoacids_scattering_mask(ex_wavelens, em_wavelens):
@@ -43,7 +43,7 @@ def generate_aminoacids_scattering_mask(ex_wavelens, em_wavelens):
 
 def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43):
     """
-    Loads amino.mat, trains PINNParafac, and prints/plots evaluation results.
+    Loads amino.mat, trains PETNParafac, and prints/plots evaluation results.
     """
     # 1. Load data
     mat_path = 'data/raw/amino.mat'
@@ -93,8 +93,8 @@ def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43):
     ex_bg = torch.zeros(num_ex)
     em_bg = torch.zeros(num_em)
     
-    print("Building PINN cuvette model...")
-    model = PINNParafac(
+    print("Building PETN cuvette model...")
+    model = PETNParafac(
         num_samples=num_samples,
         num_ex=num_ex,
         num_em=num_em,

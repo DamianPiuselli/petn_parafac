@@ -1,5 +1,5 @@
 """
-Training and Validation of PINNParafac on the Copenhagen Honey EEM Dataset.
+Training and Validation of PETNParafac on the Copenhagen Honey EEM Dataset.
 Loads HoneyEEM.mat, handles NaN masking, creates custom scattering masks,
 trains the model, and validates by visualizing resolved profiles and PCA score clusters.
 """
@@ -9,7 +9,7 @@ import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
 
-from src.model import PINNParafac
+from src.model import PETNParafac
 from src.loss import masked_mse_loss
 
 def generate_honey_scattering_mask(ex_wavelens, em_wavelens):
@@ -46,7 +46,7 @@ def generate_honey_scattering_mask(ex_wavelens, em_wavelens):
 
 def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     """
-    Loads HoneyEEM.mat, builds masks, trains the PINN model, and evaluates botanical separation.
+    Loads HoneyEEM.mat, builds masks, trains the PETN model, and evaluates botanical separation.
     """
     # Device setup
     device = torch.device('cuda' if torch.cuda.is_available() else ('mps' if torch.backends.mps.is_available() else 'cpu'))
@@ -140,8 +140,8 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     ex_bg = torch.zeros(num_ex)
     em_bg = torch.zeros(num_em)
     
-    print(f"Building PINN model for Honey (num_components = {num_components})...")
-    model = PINNParafac(
+    print(f"Building PETN model for Honey (num_components = {num_components})...")
+    model = PETNParafac(
         num_samples=num_samples,
         num_ex=num_ex,
         num_em=num_em,
@@ -159,7 +159,7 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
         model.train()
         optimizer.zero_grad()
         
-        # PINNParafac forward signature: forward(sample_idx, ex_idx, em_idx)
+        # PETNParafac forward signature: forward(sample_idx, ex_idx, em_idx)
         predictions = model(sample_indices, ex_indices, em_indices)
         loss = masked_mse_loss(predictions, intensities, mask_values)
         

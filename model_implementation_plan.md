@@ -100,6 +100,15 @@ This step-by-step implementation backlog is structured like an agile development
 ### Step 5.2: Frozen Projection Inference Utility
 * **Task:** Implement a single-sample inference helper `predict_unknown(new_eem, model)` that freezes the trained loading parameters ($B$, $C$, $\alpha$) and solves a non-linear optimization problem to predict concentrations ($a_{\text{new}}$) for new unknown EEM samples.
 
+### Step 5.3: MLP-based Instrumental & Cuvette Geometry Calibration
+* **Task:** Integrate a small multi-layer perceptron (MLP) head to learn the instrument-specific effective pathlength distribution function $\rho(\lambda_{ex}, \lambda_{em})$, automating cuvette geometry correction across different spectrofluorometers.
+
+### Step 5.4: Environmental Chemical Dynamics (pH/Temperature-Dependent Embeddings)
+* **Task:** Condition the excitation and emission embeddings on auxiliary sample parameters (pH, temperature) using a neural mapping function to resolve spectra in fluctuating environmental ecosystems.
+
+### Step 5.5: Bayesian Variational Embeddings for Uncertainty Quantification
+* **Task:** Replace the deterministic score and loading parameters with variational distributions to compute analytical confidence intervals (QA/QC metrics) for concentration predictions.
+
 ---
 
 Which phase or specific tool within this backlog would you like to start drafting first? We can begin writing the core Python code for the synthetic generator or design the neural network structure.

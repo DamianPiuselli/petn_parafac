@@ -1,13 +1,13 @@
 """
-PINN Custom Model Architecture.
+PETN Custom Model Architecture.
 Implements the trilinear core with non-negative constraints and the feedforward Dense matrix attenuation head.
 """
 import torch
 import torch.nn as nn
 
-class PINNParafac(nn.Module):
+class PETNParafac(nn.Module):
     """
-    Physics-Informed Neural Network (PINN) implementing the trilinear PARAFAC core.
+    Physics-Embedded Tensor Network (PETN) implementing the trilinear PARAFAC core.
     It embeds sample indices, excitation wavelengths, and emission wavelengths
     into positive component representations and models their trilinear interaction.
     """

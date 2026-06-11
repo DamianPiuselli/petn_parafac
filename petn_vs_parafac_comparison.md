@@ -1,12 +1,12 @@
-# PINN vs. Traditional PARAFAC Comparison
+# PETN vs. Traditional PARAFAC Comparison
 
-This document serves as a reference comparing the Physics-Informed Neural Network (PINN) approach with the traditional multi-way calibration PARAFAC implementation.
+This document serves as a reference comparing the Physics-Embedded Tensor Network (PETN) approach with the traditional multi-way calibration PARAFAC implementation.
 
-| Feature | Traditional PARAFAC | Our PyTorch PINN |
+| Feature | Traditional PARAFAC | Our PyTorch PETN |
 | :--- | :--- | :--- |
 | **Optimization** | **Alternating Least Squares (ALS)**: Solves for one matrix (e.g., $A$) at a time while keeping the others ($B, C$) fixed, iterating sequentially. | **Simultaneous Gradient Descent**: Updates all matrices ($A, B, C$) at the same time using the `Adam` optimizer gradients. |
 | **Scattering & Missing Data** | Requires complex mathematical workarounds or iterative imputation (filling in missing values) to handle scattering diagonals. | **Naturally Ignored**: We simply set the loss weight of the scattering pixels to `0` using a binary mask. The network trains on valid pixels, and the rigid trilinear core naturally interpolates the chemical signal underneath. |
-| **Non-Linearities (e.g., IFE)** | **Strictly Linear**: Cannot model attenuation or self-absorption (Inner Filter Effects) without external chemical pre-processing. | **Hybrid Architecture**: We can route a parallel Dense network to predict a non-linear attenuation factor $\gamma \in [0,1]$ that scales the trilinear core output. |
+| **Non-Linearities (e.g., IFE)** | **Strictly Linear**: Cannot model attenuation or self-absorption (Inner Filter Effects) without external chemical pre-processing. | **Hybrid Architecture**: We route a parallel cuvette attenuation head to predict a non-linear physical factor $\gamma \in [0,1]$ that scales the trilinear core output. |
 | **Memory Scaling** | Processes the entire 3D tensor at once. Can suffer from memory bottlenecks on very high-resolution scans. | **Mini-batching**: Can train on subsets of coordinate triplets, scaling easily to massive datasets. |
 
 ## How Embeddings Replicate Loadings

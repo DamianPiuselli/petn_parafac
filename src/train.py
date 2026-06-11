@@ -10,7 +10,7 @@ import pandas as pd
 from scipy.optimize import linear_sum_assignment
 
 from src.generator import EEMGenerator
-from src.model import PINNParafac
+from src.model import PETNParafac
 from src.loss import masked_mse_loss
 
 class EEMDataset(Dataset):
@@ -176,7 +176,7 @@ def match_and_align_components(true_A, true_B, true_C, pred_A, pred_B, pred_C):
     }
 
 
-def train_pinn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
+def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
     """
     Runs the full Phase 3 training pipeline:
     1. Generates synthetic EEM data with combined scattering and IFE.
@@ -224,8 +224,8 @@ def train_pinn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
     A_bg_em = 0.10 * np.exp(-0.010 * (generator.em_wavelens - lambda_0))
     
     # 2. Instantiate model
-    print("Building PINN model...")
-    model = PINNParafac(
+    print("Building PETN model...")
+    model = PETNParafac(
         num_samples=generator.num_samples,
         num_ex=generator.num_ex,
         num_em=generator.num_em,
@@ -362,4 +362,4 @@ def train_pinn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
     }
 
 if __name__ == '__main__':
-    train_pinn_mvp()
+    train_petn_mvp()

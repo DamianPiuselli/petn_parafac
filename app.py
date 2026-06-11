@@ -7,13 +7,13 @@ from plotly.subplots import make_subplots
 import time
 
 from src.generator import EEMGenerator
-from src.model import PINNParafac
+from src.model import PETNParafac
 from src.loss import masked_mse_loss
 from src.train import match_and_align_components
 
 # --- Page Configurations ---
 st.set_page_config(
-    page_title="PINN-PARAFAC Spectroscopy Simulator",
+    page_title="PETN-PARAFAC Spectroscopy Simulator",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -449,8 +449,8 @@ st.markdown("""
 # --- Main Dashboard Header ---
 st.markdown("""
 <div class="header-card">
-    <div class="header-badge">Physics-Informed Deep Learning</div>
-    <h1 class="header-title">🔬 PINN-PARAFAC Cuvette Simulator</h1>
+    <div class="header-badge">Physics-Embedded Deep Learning</div>
+    <h1 class="header-title">🔬 PETN-PARAFAC Cuvette Simulator</h1>
     <p class="header-subtitle">
         An interactive solver and simulator that resolves overlapping chemical fluorophore loadings, 
         compensates for non-linear Inner Filter Effects (IFE) via physical constraints, and blinds out Rayleigh/Raman scattering diagonals.
@@ -465,7 +465,7 @@ corrupt_scatter = st.sidebar.checkbox("Corrupt with Scattering (Rayleigh/Raman)"
 corrupt_ife = st.sidebar.checkbox("Corrupt with Inner Filter Effect (IFE)", value=True)
 
 st.sidebar.markdown("<h2>2. Solver Configuration</h2>", unsafe_allow_html=True)
-model_type = st.sidebar.selectbox("Model Architecture", ["PINN-PARAFAC", "Pure PARAFAC"])
+model_type = st.sidebar.selectbox("Model Architecture", ["PETN-PARAFAC", "Pure PARAFAC"])
 lr = st.sidebar.slider("Learning Rate", min_value=0.001, max_value=0.05, value=0.008, step=0.001, format="%.3f")
 total_epochs = st.sidebar.number_input("Total Training Epochs", min_value=100, max_value=10000, value=2000, step=500)
 epochs_per_update = st.sidebar.slider("Epochs per UI Update", min_value=10, max_value=500, value=100, step=10)
@@ -505,8 +505,8 @@ if 'model_type_in_state' in st.session_state and st.session_state.initialized an
     torch.manual_seed(42)
     np.random.seed(42)
     
-    if model_type == "PINN-PARAFAC":
-        st.session_state.model = PINNParafac(
+    if model_type == "PETN-PARAFAC":
+        st.session_state.model = PETNParafac(
             num_samples=generator.num_samples,
             num_ex=generator.num_ex,
             num_em=generator.num_em,
@@ -517,7 +517,7 @@ if 'model_type_in_state' in st.session_state and st.session_state.initialized an
             num_components=3
         )
     else: # Pure PARAFAC
-        st.session_state.model = PINNParafac(
+        st.session_state.model = PETNParafac(
             num_samples=generator.num_samples,
             num_ex=generator.num_ex,
             num_em=generator.num_em,
@@ -634,8 +634,8 @@ def action_generate_dataset():
     torch.manual_seed(42)
     np.random.seed(42)
     
-    if model_type == "PINN-PARAFAC":
-        model = PINNParafac(
+    if model_type == "PETN-PARAFAC":
+        model = PETNParafac(
             num_samples=generator.num_samples,
             num_ex=generator.num_ex,
             num_em=generator.num_em,
@@ -646,7 +646,7 @@ def action_generate_dataset():
             num_components=3
         )
     else: # Pure PARAFAC
-        model = PINNParafac(
+        model = PETNParafac(
             num_samples=generator.num_samples,
             num_ex=generator.num_ex,
             num_em=generator.num_em,
@@ -836,7 +836,7 @@ if not st.session_state.initialized:
             In actual chemical laboratory samples, measurements are heavily corrupted by <strong>optical scattering artifacts</strong> 
             and non-linear <strong>Inner Filter Effects (IFE)</strong>. 
             This simulator allows you to generate synthetic spectroscopy datasets with physical interferences, 
-            and solve them using a Physics-Informed Neural Network (PINN) gray-box model.
+            and solve them using a Physics-Embedded Tensor Network (PETN) gray-box model.
         </p>
     </div>
     
@@ -863,7 +863,7 @@ if not st.session_state.initialized:
             </p>
             <div class="card-tag">Gray-Box Cuvette Attenuation Head</div>
             <p class="card-action">
-                The PINN integrates a physical cuvette attenuation head inside its neural graph. 
+                The PETN integrates a physical cuvette attenuation head inside its neural graph. 
                 It learns component-specific molar absorptivities and applies a physical attenuation factor strictly bounded between 0 and 1, mathematically reversing the suppression.
             </p>
         </div>
@@ -1128,7 +1128,7 @@ else:
                     <p>
                         Pure PARAFAC operates as a linear mathematical decomposition and is physically blind to the Cuvette Inner Filter Effect. 
                         No molar absorptivities or solvent background profiles are modeled. 
-                        Switch to the <strong>PINN-PARAFAC</strong> architecture in the sidebar to enable gray-box attenuation modeling.
+                        Switch to the <strong>PETN-PARAFAC</strong> architecture in the sidebar to enable gray-box attenuation modeling.
                     </p>
                 </div>
             </div>

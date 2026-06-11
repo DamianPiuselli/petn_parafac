@@ -1,9 +1,9 @@
 """
-Tests for PINN Custom Model.
+Tests for PETN Custom Model.
 """
 import torch
 import numpy as np
-from src.model import PINNParafac
+from src.model import PETNParafac
 
 def get_dummy_wavelengths(num_ex=20, num_em=30):
     ex_wavelens = np.linspace(250.0, 400.0, num_ex)
@@ -11,11 +11,11 @@ def get_dummy_wavelengths(num_ex=20, num_em=30):
     return ex_wavelens, em_wavelens
 
 def test_model_initialization():
-    """Verify PINNParafac initializes layers and weights with positive values."""
+    """Verify PETNParafac initializes layers and weights with positive values."""
     ex_w, em_w = get_dummy_wavelengths(20, 30)
     ex_bg = torch.ones(20) * 0.05
     em_bg = torch.ones(30) * 0.05
-    model = PINNParafac(
+    model = PETNParafac(
         num_samples=10, num_ex=20, num_em=30,
         ex_wavelens=ex_w, em_wavelens=em_w,
         ex_bg=ex_bg, em_bg=em_bg, num_components=3
@@ -41,7 +41,7 @@ def test_model_forward():
     ex_w, em_w = get_dummy_wavelengths(20, 30)
     ex_bg = torch.ones(20) * 0.05
     em_bg = torch.ones(30) * 0.05
-    model = PINNParafac(
+    model = PETNParafac(
         num_samples=10, num_ex=20, num_em=30,
         ex_wavelens=ex_w, em_wavelens=em_w,
         ex_bg=ex_bg, em_bg=em_bg, num_components=3
@@ -62,7 +62,7 @@ def test_model_constraint_projection():
     ex_w, em_w = get_dummy_wavelengths(5, 5)
     ex_bg = torch.ones(5) * 0.05
     em_bg = torch.ones(5) * 0.05
-    model = PINNParafac(
+    model = PETNParafac(
         num_samples=5, num_ex=5, num_em=5,
         ex_wavelens=ex_w, em_wavelens=em_w,
         ex_bg=ex_bg, em_bg=em_bg, num_components=2
@@ -100,7 +100,7 @@ def test_model_ife_head():
     ex_w, em_w = get_dummy_wavelengths(25, 35)
     ex_bg = torch.ones(25) * 0.05
     em_bg = torch.ones(35) * 0.05
-    model = PINNParafac(
+    model = PETNParafac(
         num_samples=5, num_ex=25, num_em=35,
         ex_wavelens=ex_w, em_wavelens=em_w,
         ex_bg=ex_bg, em_bg=em_bg, num_components=2
