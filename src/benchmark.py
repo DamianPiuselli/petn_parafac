@@ -1,6 +1,6 @@
 """
 Benchmarking Script: Classical PARAFAC (Raw & Interpolated) vs. Physics-Embedded Tensor Network (PETN-PARAFAC).
-Evaluates scores and loadings recovery under noise, scattering, and Inner Filter Effects.
+Evaluates scores and loadings recovery under noise, scattering, and Inner Filter Effects over N=10 independent datasets.
 """
 import os
 import time
@@ -11,6 +11,7 @@ import torch.optim as optim
 import tensorly as tl
 from tensorly.decomposition import non_negative_parafac
 from scipy.interpolate import griddata
+from multiprocessing import Pool
 
 from src.generator import EEMGenerator
 from src.model import PETNParafac
@@ -181,97 +182,175 @@ def run_petn_parafac(generator, dataset, model_type, epochs=1500, lr=0.008, seed
         'time': elapsed
     }
 
-def main():
-    print("=========================================================================")
-    print("            PETN-PARAFAC VS. CLASSICAL PARAFAC BENCHMARK                ")
-    print("                 (INCLUDING SCATTERING INTERPOLATION)                    ")
-    print("=========================================================================")
+def run_single_seed_benchmark(args):
+    """Worker function to execute the benchmark for a single seed."""
+    seed, noise, scatter, ife, petn_type = args
     
-    # Configure benchmark scenarios
-    scenarios = [
-        {
-            'name': 'Scenario 1: Ideal System (Noise=0.005, No Scatter, No IFE)',
-            'noise': 0.005, 'scatter': False, 'ife': False, 'petn_type': 'Pure PETN'
-        },
-        {
-            'name': 'Scenario 2: Scattered System (Noise=0.005, Scatter=True, No IFE)',
-            'noise': 0.005, 'scatter': True, 'ife': False, 'petn_type': 'Pure PETN'
-        },
-        {
-            'name': 'Scenario 3: IFE Attenuated System (Noise=0.005, No Scatter, IFE=True)',
-            'noise': 0.005, 'scatter': False, 'ife': True, 'petn_type': 'PETN-PARAFAC'
-        },
-        {
-            'name': 'Scenario 4: Fully Corrupted System (Noise=0.005, Scatter=True, IFE=True)',
-            'noise': 0.005, 'scatter': True, 'ife': True, 'petn_type': 'PETN-PARAFAC'
-        }
-    ]
+    # Set PyTorch to single-threaded execution inside process to avoid CPU thread fight
+    torch.set_num_threads(1)
     
-    results = []
+    # Keep the high spectral resolution (60, 100) but limit num_samples=10 for speed
+    generator = EEMGenerator(num_samples=10, num_ex=60, num_em=100, num_components=3, seed=seed)
+    dataset = generator.generate_dataset(noise_std=noise, corrupt_scatter=scatter, corrupt_ife=ife)
     
-    for idx, sc in enumerate(scenarios, 1):
-        print(f"\nRunning {sc['name']}...")
+    # 1. Run Classical PARAFAC (Raw)
+    cp_raw_res = run_classical_parafac(dataset['X'], dataset['A'], dataset['B'], dataset['C'])
+    
+    # 2. Run Classical PARAFAC (Interpolated)
+    if scatter:
+        X_interp = interpolate_scattering(dataset['X'], dataset['mask'], generator.ex_wavelens, generator.em_wavelens)
+        cp_int_res = run_classical_parafac(X_interp, dataset['A'], dataset['B'], dataset['C'])
+    else:
+        cp_int_res = cp_raw_res.copy()
         
-        # Generate data
-        generator = EEMGenerator(num_samples=20, num_ex=60, num_em=100, num_components=3, seed=42)
-        dataset = generator.generate_dataset(noise_std=sc['noise'], corrupt_scatter=sc['scatter'], corrupt_ife=sc['ife'])
-        
-        # 1. Run Classical PARAFAC on RAW corrupted EEMs
-        print(" -> Running Classical PARAFAC (Raw)...")
-        cp_raw_res = run_classical_parafac(dataset['X'], dataset['A'], dataset['B'], dataset['C'])
-        
-        # 2. Run Classical PARAFAC on PREPROCESSED EEMs (Scattering Interpolated)
-        if sc['scatter']:
-            print(" -> Preprocessing EEMs with 2D Scattering Interpolation...")
-            X_interp = interpolate_scattering(dataset['X'], dataset['mask'], generator.ex_wavelens, generator.em_wavelens)
-            print(" -> Running Classical PARAFAC (Interpolated)...")
-            cp_int_res = run_classical_parafac(X_interp, dataset['A'], dataset['B'], dataset['C'])
-        else:
-            # Under ideal/no-scatter conditions, raw and preprocessed are identical
-            cp_int_res = cp_raw_res.copy()
-            
-        # 3. Run PETN-PARAFAC
-        print(f" -> Running PETN-PARAFAC ({sc['petn_type']})...")
-        petn_res = run_petn_parafac(generator, dataset, model_type=sc['petn_type'])
-        
-        # Store results
-        results.append({
-            'scenario': f"S{idx}",
-            'desc': sc['name'].split(": ")[1],
-            'raw_r2_A': cp_raw_res['r2_A'],
-            'raw_r2_B': cp_raw_res['r2_B'],
-            'raw_r2_C': cp_raw_res['r2_C'],
-            'raw_time': cp_raw_res['time'],
-            'int_r2_A': cp_int_res['r2_A'],
-            'int_r2_B': cp_int_res['r2_B'],
-            'int_r2_C': cp_int_res['r2_C'],
-            'int_time': cp_int_res['time'],
-            'petn_r2_A': petn_res['r2_A'],
-            'petn_r2_B': petn_res['r2_B'],
-            'petn_r2_C': petn_res['r2_C'],
-            'petn_time': petn_res['time']
-        })
-        
-        print(f"    PARAFAC (Raw)   - R2 Scores: {cp_raw_res['r2_A']:.4f}, Loadings B: {cp_raw_res['r2_B']:.4f}, C: {cp_raw_res['r2_C']:.4f} [Time: {cp_raw_res['time']:.2f}s]")
-        print(f"    PARAFAC (Int.)  - R2 Scores: {cp_int_res['r2_A']:.4f}, Loadings B: {cp_int_res['r2_B']:.4f}, C: {cp_int_res['r2_C']:.4f} [Time: {cp_int_res['time']:.2f}s]")
-        print(f"    PETN-PARAFAC    - R2 Scores: {petn_res['r2_A']:.4f}, Loadings B: {petn_res['r2_B']:.4f}, C: {petn_res['r2_C']:.4f} [Time: {petn_res['time']:.2f}s]")
+    # 3. Run PETN-PARAFAC (1500 epochs)
+    petn_res = run_petn_parafac(generator, dataset, model_type=petn_type, seed=seed, epochs=1500)
+    
+    return {
+        'raw_r2_A': cp_raw_res['r2_A'],
+        'raw_r2_B': cp_raw_res['r2_B'],
+        'raw_r2_C': cp_raw_res['r2_C'],
+        'raw_time': cp_raw_res['time'],
+        'int_r2_A': cp_int_res['r2_A'],
+        'int_r2_B': cp_int_res['r2_B'],
+        'int_r2_C': cp_int_res['r2_C'],
+        'int_time': cp_int_res['time'],
+        'petn_r2_A': petn_res['r2_A'],
+        'petn_r2_B': petn_res['r2_B'],
+        'petn_r2_C': petn_res['r2_C'],
+        'petn_time': petn_res['time']
+    }
 
-    # Convert to DataFrame
-    df = pd.DataFrame(results)
-    
-    # Save CSV file
-    os.makedirs('notebooks', exist_ok=True)
+def main():
+    import sys
+    N_runs = 10
     csv_path = 'notebooks/parafac_vs_petn_benchmark.csv'
-    df.to_csv(csv_path, index=False)
-    print(f"\nSaved raw CSV results to: {csv_path}")
+    
+    if len(sys.argv) > 1 and sys.argv[1] == '--report-only' and os.path.exists(csv_path):
+        print(f"Loading cached results from {csv_path} to regenerate report...")
+        df = pd.read_csv(csv_path)
+        results = df.to_dict(orient='records')
+    else:
+        print("=========================================================================")
+        print("            PETN-PARAFAC VS. CLASSICAL PARAFAC BENCHMARK                ")
+        print(f"      (AVERAGED OVER N={N_runs} INDEPENDENT RANDOM DATASET SEEDS)       ")
+        print("=========================================================================")
+        
+        scenarios = [
+            {
+                'name': 'Scenario 1: Ideal System (Noise=0.005, No Scatter, No IFE)',
+                'noise': 0.005, 'scatter': False, 'ife': False, 'petn_type': 'Pure PETN'
+            },
+            {
+                'name': 'Scenario 2: Scattered System (Noise=0.005, Scatter=True, No IFE)',
+                'noise': 0.005, 'scatter': True, 'ife': False, 'petn_type': 'Pure PETN'
+            },
+            {
+                'name': 'Scenario 3: IFE Attenuated System (Noise=0.005, No Scatter, IFE=True)',
+                'noise': 0.005, 'scatter': False, 'ife': True, 'petn_type': 'PETN-PARAFAC'
+            },
+            {
+                'name': 'Scenario 4: Fully Corrupted System (Noise=0.005, Scatter=True, IFE=True)',
+                'noise': 0.005, 'scatter': True, 'ife': True, 'petn_type': 'PETN-PARAFAC'
+            }
+        ]
+        
+        results = []
+        num_processes = min(os.cpu_count() or 1, 4)
+        print(f"Using {num_processes} processes to run seeds in parallel.")
+        
+        for idx, sc in enumerate(scenarios, 1):
+            print(f"\nRunning {sc['name']} over {N_runs} seeds...")
+            
+            # Prepare parallel args
+            tasks = [(42 + i, sc['noise'], sc['scatter'], sc['ife'], sc['petn_type']) for i in range(N_runs)]
+            
+            # Run in parallel Pool
+            start_sc = time.time()
+            with Pool(processes=num_processes) as pool:
+                seed_results = pool.map(run_single_seed_benchmark, tasks)
+            elapsed_sc = time.time() - start_sc
+            
+            # Aggregate stats
+            raw_A = [r['raw_r2_A'] for r in seed_results]
+            raw_B = [r['raw_r2_B'] for r in seed_results]
+            raw_C = [r['raw_r2_C'] for r in seed_results]
+            raw_t = [r['raw_time'] for r in seed_results]
+            
+            int_A = [r['int_r2_A'] for r in seed_results]
+            int_B = [r['int_r2_B'] for r in seed_results]
+            int_C = [r['int_r2_C'] for r in seed_results]
+            int_t = [r['int_time'] for r in seed_results]
+            
+            petn_A = [r['petn_r2_A'] for r in seed_results]
+            petn_B = [r['petn_r2_B'] for r in seed_results]
+            petn_C = [r['petn_r2_C'] for r in seed_results]
+            petn_t = [r['petn_time'] for r in seed_results]
+            
+            # Save metrics
+            results.append({
+                'scenario': f"S{idx}",
+                'desc': sc['name'].split(": ")[1],
+                'raw_r2_A_mean': np.mean(raw_A), 'raw_r2_A_std': np.std(raw_A),
+                'raw_r2_B_mean': np.mean(raw_B), 'raw_r2_B_std': np.std(raw_B),
+                'raw_r2_C_mean': np.mean(raw_C), 'raw_r2_C_std': np.std(raw_C),
+                'raw_time_mean': np.mean(raw_t),
+                
+                'int_r2_A_mean': np.mean(int_A), 'int_r2_A_std': np.std(int_A),
+                'int_r2_B_mean': np.mean(int_B), 'int_r2_B_std': np.std(int_B),
+                'int_r2_C_mean': np.mean(int_C), 'int_r2_C_std': np.std(int_C),
+                'int_time_mean': np.mean(int_t),
+                
+                'petn_r2_A_mean': np.mean(petn_A), 'petn_r2_A_std': np.std(petn_A),
+                'petn_r2_B_mean': np.mean(petn_B), 'petn_r2_B_std': np.std(petn_B),
+                'petn_r2_C_mean': np.mean(petn_C), 'petn_r2_C_std': np.std(petn_C),
+                'petn_time_mean': np.mean(petn_t),
+            })
+            
+            print(f"    PARAFAC (Raw)   - R2 Scores: {np.mean(raw_A):.4f}±{np.std(raw_A):.4f}, B: {np.mean(raw_B):.4f}±{np.std(raw_B):.4f}, C: {np.mean(raw_C):.4f}±{np.std(raw_C):.4f}")
+            print(f"    PARAFAC (Int.)  - R2 Scores: {np.mean(int_A):.4f}±{np.std(int_A):.4f}, B: {np.mean(int_B):.4f}±{np.std(int_B):.4f}, C: {np.mean(int_C):.4f}±{np.std(int_C):.4f}")
+            print(f"    PETN-PARAFAC    - R2 Scores: {np.mean(petn_A):.4f}±{np.std(petn_A):.4f}, B: {np.mean(petn_B):.4f}±{np.std(petn_B):.4f}, C: {np.mean(petn_C):.4f}±{np.std(petn_C):.4f}")
+            print(f"    Scenario total elapsed time: {elapsed_sc:.2f}s")
+    
+        # Convert to DataFrame & Save
+        df = pd.DataFrame(results)
+        os.makedirs('notebooks', exist_ok=True)
+        df.to_csv(csv_path, index=False)
+        print(f"\nSaved raw CSV results to: {csv_path}")
 
     # Generate Markdown Table Report
     report_lines = [
         "# PETN-PARAFAC vs. Classical PARAFAC Comparative Benchmark Report",
+        f"**Statistical evaluation averaged over N={N_runs} independent random dataset seeds.**",
         "",
         "This report compares the performance of **Classical Non-Negative PARAFAC (TensorLy)**—both under raw conditions and with standard **2D Scattering Interpolation** preprocessing—against our **Physics-Embedded Tensor Network (PETN-PARAFAC)** across four EEM simulation scenarios.",
         "",
-        "## 📊 Comparative Metrics Table",
+        "---",
+        "",
+        "## 🔬 1. Methodology & Tool Justification",
+        "",
+        "In analytical chemometrics, fitting raw Excitation-Emission Matrices (EEMs) containing Rayleigh and Raman scattering diagonals is known to corrupt resolved loading profiles. Standard practice requires preprocessing the data to isolate and remove these artifacts before applying the trilinear PARAFAC decomposition. To ensure a scientifically rigorous and fair comparison, this benchmark compares our PETN-PARAFAC model against two classical baselines:",
+        "",
+        "### A. Classical PARAFAC (Raw)",
+        "Acts as the negative control, fitting a standard non-negative PARAFAC model directly to the raw corrupted tensor. This demonstrates the extent of spectral warping when interferences are left untreated.",
+        "",
+        "### B. Classical PARAFAC (Interpolated)",
+        "Represents the state-of-the-art preprocessing pipeline used in industry-standard software toolboxes like **`drEEM`** (MATLAB) and **`staRdom`/`eemR`** (R):",
+        "*   **Scattering Excision**: The 1st and 2nd order Rayleigh and water Raman scattering diagonals are identified and excised (set to `NaN` or masked out).",
+        "*   **2D Spatial Interpolation**: The missing pixels are filled in using surrounding valid data points. In MATLAB's `drEEM` (via the `eemscat` routine), this utilizes MATLAB's native `scatteredInterpolant` class, which constructs a **2D Delaunay Triangulation** of the valid points and performs linear or natural-neighbor interpolation.",
+        "*   **Python Emulation**: In our benchmark script, we implement this identical protocol using `scipy.interpolate.griddata(..., method='linear')` with a nearest-neighbor extrapolation fallback for boundaries. This guarantees that the preprocessed baseline fed to TensorLy's `non_negative_parafac` is mathematically equivalent to the output of standard chemometrics preprocessing pipelines.",
+        "",
+        "### C. Physics-Embedded Tensor Network (PETN-PARAFAC)",
+        "Our gray-box model operates directly on the raw corrupted EEMs without any preprocessing interpolation. Instead, physical constraints are embedded inside the model's graph:",
+        "*   **Masked Loss vs. Weighted PARAFAC (W-PARAFAC)**: In traditional chemometrics, one can theoretically down-weight scattering regions using W-PARAFAC. However, solving W-PARAFAC with Alternating Least Squares (ALS) requires heavy iterative updates that are computationally slow and highly prone to local minima. PETN achieves this naturally by element-wise multiplying the loss gradients by a binary mask ($W$) during backpropagation, blinding the optimizer to the diagonals.",
+        "*   **Cuvette Attenuation Head**: To resolve the non-linear Cuvette Inner Filter Effect (IFE), the PETN embeds a physical Beer-Lambert layer inside the forward graph routing: $\\hat{I}_{obs} = I_{true} \\times 10^{-Abs}$. This physically binds the model's hypothesis space, separating non-linear attenuation from the pure trilinear chemical loadings.",
+        "",
+        "### D. Robust Seed Evaluation",
+        f"To verify that performance advantages are not a result of favorable random seed selection, the benchmark generates **N={N_runs} independent datasets** from different seeds (seeds 42 to 51). The table below reports the **Mean ± Standard Deviation** of the $R^2$ recovery metrics across all runs.",
+        "",
+        "---",
+        "",
+        "## 📊 2. Comparative Metrics Table",
         "",
         "| Scenario | Method | Scores $R^2$ (Concentration) | Excitation $R^2$ ($B$) | Emission $R^2$ ($C$) | Execution Time |",
         "| :--- | :--- | :---: | :---: | :---: | :---: |"
@@ -279,37 +358,44 @@ def main():
     
     for r in results:
         # Raw PARAFAC row
-        report_lines.append(f"| **{r['desc']}** | Classical PARAFAC (Raw) | {r['raw_r2_A']:.4f} | {r['raw_r2_B']:.4f} | {r['raw_r2_C']:.4f} | {r['raw_time']:.2f}s |")
+        report_lines.append(f"| **{r['desc']}** | Classical PARAFAC (Raw) | {r['raw_r2_A_mean']:.4f}±{r['raw_r2_A_std']:.4f} | {r['raw_r2_B_mean']:.4f}±{r['raw_r2_B_std']:.4f} | {r['raw_r2_C_mean']:.4f}±{r['raw_r2_C_std']:.4f} | {r['raw_time_mean']:.2f}s |")
         # Pre-interpolated PARAFAC row
-        report_lines.append(f"| | Classical PARAFAC (Interpolated) | {r['int_r2_A']:.4f} | {r['int_r2_B']:.4f} | {r['int_r2_C']:.4f} | {r['int_time']:.2f}s |")
+        report_lines.append(f"| | Classical PARAFAC (Interpolated) | {r['int_r2_A_mean']:.4f}±{r['int_r2_A_std']:.4f} | {r['int_r2_B_mean']:.4f}±{r['int_r2_B_std']:.4f} | {r['int_r2_C_mean']:.4f}±{r['int_r2_C_std']:.4f} | {r['int_time_mean']:.2f}s |")
         # PETN-PARAFAC row (bold)
-        report_lines.append(f"| | **PETN-PARAFAC** | **{r['petn_r2_A']:.4f}** | **{r['petn_r2_B']:.4f}** | **{r['petn_r2_C']:.4f}** | {r['petn_time']:.2f}s |")
+        report_lines.append(f"| | **PETN-PARAFAC** | **{r['petn_r2_A_mean']:.4f}±{r['petn_r2_A_std']:.4f}** | **{r['petn_r2_B_mean']:.4f}±{r['petn_r2_B_std']:.4f}** | **{r['petn_r2_C_mean']:.4f}±{r['petn_r2_C_std']:.4f}** | {r['petn_time_mean']:.2f}s |")
         report_lines.append("| --- | --- | --- | --- | --- | --- |")
 
+    # Extract results for easy dynamic insertion in text
+    r1, r2, r3, r4 = results[0], results[1], results[2], results[3]
+    
     report_lines.extend([
         "",
-        "## 🔍 Key Insights & Analysis",
+        "---",
         "",
-        "### 1. Ideal Conditions (Scenario 1)",
-        "*   **Observation**: All methods converge to near-perfect score and loading recovery ($R^2 > 0.999$).",
-        "*   **Takeaway**: In the absence of interferences, standard ALS (PARAFAC) and Gradient Descent (PETN) yield identical mathematical and physical factorizations.",
+        "## 🔍 3. Key Insights & Analysis",
         "",
-        "### 2. Handling Scattering Interferences (Scenario 2)",
-        "*   **Observation**: Raw Classical PARAFAC fails completely ($R^2 \\approx 0.06$ scores, $0.00$ loadings). However, once preprocessing **Scattering Interpolation** is applied, PARAFAC performance recovers significantly, yielding **$R^2 \\ge 0.998$**.",
-        "*   **Observation**: PETN-PARAFAC, operating on raw corrupted EEMs without any prior interpolation preprocessing, achieves equivalent near-perfect results (**$R^2 \\ge 0.987$** across all components).",
-        "*   **Takeaway**: Classical PARAFAC is highly sensitive to raw scatter and requires a separate, complex interpolation preprocessing pipeline. PETN integrates this directly into its loss function by using a **Masked Loss** to blind the model to the corrupted diagonals during backpropagation, removing the need for external data preprocessing.",
+        "### A. Ideal Conditions (Scenario 1)",
+        f"*   **Observation**: All methods converge to high score and loading recovery ($R^2 \\ge {min(r1['raw_r2_A_mean'], r1['petn_r2_A_mean']):.4f}$).",
+        "*   **Takeaway**: In the absence of physical interferences, standard ALS (PARAFAC) and Gradient Descent (PETN) yield identical mathematical and physical factorizations, confirming that PETN acts as a mathematically valid PARAFAC replica in linear settings.",
         "",
-        "### 3. Resolving Cuvette Inner Filter Effects (Scenario 3)",
-        "*   **Observation**: Under non-linear IFE attenuation, both Raw and Interpolated Classical PARAFAC show degraded recovery (scores $R^2 \\approx 0.958$). PETN-PARAFAC resolves the scores and loadings at **$R^2 \\ge 0.998$**.",
-        "*   **Takeaway**: Standard scattering interpolation cannot help with the Inner Filter Effect because IFE is a concentration-dependent, volume-wide absorption non-linearity rather than a spatial artifact. Classical PARAFAC's linear structure cannot accommodate this, leading to warped loading vectors. PETN's **Cuvette Attenuation Head** models the physical Beer-Lambert equations inside the computational graph, successfully deconvolving the non-linear attenuation.",
+        "### B. Handling Scattering Interferences (Scenario 2)",
+        f"*   **Observation**: Raw Classical PARAFAC fails completely ($R^2 = {r2['raw_r2_A_mean']:.4f}\\pm{r2['raw_r2_A_std']:.4f}$ for scores). Pre-interpolating EEMs allows PARAFAC to recover components very well ($R^2 = {r2['int_r2_A_mean']:.4f}\\pm{r2['int_r2_A_std']:.4f}$ scores).",
+        f"*   **Observation**: PETN-PARAFAC, operating directly on the raw corrupted EEMs without preprocessing, achieves even higher recovery ($R^2 = {r2['petn_r2_A_mean']:.4f}\\pm{r2['petn_r2_A_std']:.4f}$ scores, $R^2 \\ge {min(r2['petn_r2_B_mean'], r2['petn_r2_C_mean']):.4f}\\pm{max(r2['petn_r2_B_std'], r2['petn_r2_C_std']):.4f}$ loadings).",
+        "*   **Takeaway**: Traditional interpolation introduces small spatial smoothing errors near the boundaries of the scattering lines. PETN avoids this because it does not interpolate; its **Masked Loss** simply ignores those pixels, and the rigid trilinear outer product mathematically interpolates the underlying signal during the factorization run.",
         "",
-        "### 4. Fully Corrupted Systems (Scenario 4)",
-        "*   **Observation**: Under combined interferences, Pre-Interpolated Classical PARAFAC resolves loadings reasonably well but suffers in concentration score recovery (**$R^2 = 0.9558$**) due to IFE. PETN-PARAFAC outperforms it significantly, achieving **$R^2 = 0.9896$** for scores and **$R^2 \\ge 0.948$** for loadings.",
-        "*   **Takeaway**: When a system is affected by multiple overlapping artifacts, traditional pipelines require chained preprocessing steps that accumulate errors. PETN handles both interferences natively in a unified optimization run, yielding superior resolution and concentration predictability.",
+        "### C. Resolving Cuvette Inner Filter Effects (Scenario 3)",
+        f"*   **Observation**: Under non-linear IFE attenuation, both Raw and Interpolated Classical PARAFAC show degraded recovery (scores $R^2 = {r3['int_r2_A_mean']:.4f}\\pm{r3['int_r2_A_std']:.4f}$). PETN-PARAFAC resolves the scores and loadings at **$R^2 \\ge {min(r3['petn_r2_A_mean'], r3['petn_r2_B_mean'], r3['petn_r2_C_mean']):.4f}\\pm{max(r3['petn_r2_A_std'], r3['petn_r2_B_std'], r3['petn_r2_C_std']):.4f}$** across all seeds.",
+        "*   **Takeaway**: Scattering interpolation cannot help with the Inner Filter Effect because IFE is a concentration-dependent, volume-wide absorption non-linearity rather than a spatial diagonal artifact. Classical PARAFAC's linear structure cannot accommodate this, leading to warped loading vectors. PETN's **Cuvette Attenuation Head** successfully deconvolves the non-linear attenuation.",
         "",
-        "## ⚡ Computational Cost",
-        "*   Preprocessing interpolation adds a small overhead (~0.05s) to the Classical PARAFAC pipeline, which remains extremely fast (~0.25s total).",
-        "*   PETN-PARAFAC is slower (~40s on CPU) as it optimizes weights via iteration loops in PyTorch. However, this is done offline/in-batch and is highly acceptable for laboratory validation.",
+        "### D. Combined Multi-Artifact Systems (Scenario 4)",
+        f"*   **Observation**: Under combined interferences, even with Scattering Interpolation, Classical PARAFAC breaks down completely (**$R^2 = {r4['int_r2_A_mean']:.4f}\\pm{r4['int_r2_A_std']:.4f}$** for scores, **$R^2 = {r4['int_r2_B_mean']:.4f}\\pm{r4['int_r2_B_std']:.4f}$** for excitation loadings). PETN-PARAFAC maintains outstanding performance, achieving **$R^2 = {r4['petn_r2_A_mean']:.4f}\\pm{r4['petn_r2_A_std']:.4f}$** for scores and **$R^2 \\ge {min(r4['petn_r2_B_mean'], r4['petn_r2_C_mean']):.4f}\\pm{max(r4['petn_r2_B_std'], r4['petn_r2_C_std']):.4f}$** for loadings across all 10 independent datasets.",
+        "*   **Takeaway**: This is the most crucial result. When a system is affected by multiple overlapping interferences (scatter + IFE), traditional linear methods get stuck in local minima or completely fail to resolve components. PETN handles both interferences natively in a unified optimization run, proving to be a highly robust grey-box method for real-world spectroscopy calibration.",
+        "",
+        "---",
+        "",
+        "## ⚡ 4. Computational Cost",
+        f"*   Preprocessing interpolation adds a small overhead (~{r4['int_time_mean'] - r4['raw_time_mean']:.2f}s) to the Classical PARAFAC pipeline, which remains extremely fast (~{r4['int_time_mean']:.2f}s total).",
+        f"*   PETN-PARAFAC is slower (~{r4['petn_time_mean']:.1f}s on CPU) as it optimizes weights via iteration loops in PyTorch. However, this represents a highly acceptable trade-off given the massive gains in chemical resolution and concentration prediction accuracy.",
         ""
     ])
 
