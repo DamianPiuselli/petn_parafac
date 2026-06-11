@@ -1,6 +1,6 @@
 # PETN-PARAFAC vs. Classical PARAFAC Comparative Benchmark Report
 
-This report compares the performance of **Classical Non-Negative PARAFAC (TensorLy)** and our **Physics-Embedded Tensor Network (PETN-PARAFAC)** across four laboratory EEM simulation scenarios containing common spectroscopy interferences.
+This report compares the performance of **Classical Non-Negative PARAFAC (TensorLy)**—both under raw conditions and with standard **2D Scattering Interpolation** preprocessing—against our **Physics-Embedded Tensor Network (PETN-PARAFAC)** across four EEM simulation scenarios.
 
 ---
 
@@ -8,17 +8,21 @@ This report compares the performance of **Classical Non-Negative PARAFAC (Tensor
 
 | Scenario | Method | Scores $R^2$ (Concentration) | Excitation $R^2$ ($B$) | Emission $R^2$ ($C$) | Execution Time |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| **Ideal System (Noise=0.005, No Scatter, No IFE)** | Classical PARAFAC | 0.9999 | 0.9997 | 0.9997 | 0.23s |
-| | **PETN-PARAFAC** | **1.0000** | **1.0000** | **1.0000** | 40.97s |
+| **Ideal System (Noise=0.005, No Scatter, No IFE)** | Classical PARAFAC (Raw) | 1.0000 | 1.0000 | 1.0000 | 0.18s |
+| | Classical PARAFAC (Interpolated) | 1.0000 | 1.0000 | 1.0000 | 0.18s |
+| | **PETN-PARAFAC** | **1.0000** | **1.0000** | **1.0000** | 40.73s |
 | --- | --- | --- | --- | --- | --- |
-| **Scattered System (Noise=0.005, Scatter=True, No IFE)** | Classical PARAFAC | 0.0642 | 0.0000 | 0.0000 | 0.03s |
-| | **PETN-PARAFAC** | **0.9993** | **0.9876** | **0.9871** | 38.97s |
+| **Scattered System (Noise=0.005, Scatter=True, No IFE)** | Classical PARAFAC (Raw) | 0.0642 | 0.0000 | 0.0000 | 0.04s |
+| | Classical PARAFAC (Interpolated) | 0.9865 | 0.9231 | 0.9371 | 0.10s |
+| | **PETN-PARAFAC** | **0.9993** | **0.9876** | **0.9871** | 39.37s |
 | --- | --- | --- | --- | --- | --- |
-| **IFE Attenuated System (Noise=0.005, No Scatter, IFE=True)** | Classical PARAFAC | 0.9578 | 0.9783 | 0.9980 | 0.23s |
-| | **PETN-PARAFAC** | **0.9989** | **0.9989** | **1.0000** | 39.68s |
+| **IFE Attenuated System (Noise=0.005, No Scatter, IFE=True)** | Classical PARAFAC (Raw) | 0.9578 | 0.9783 | 0.9980 | 0.23s |
+| | Classical PARAFAC (Interpolated) | 0.9578 | 0.9783 | 0.9980 | 0.23s |
+| | **PETN-PARAFAC** | **0.9989** | **0.9989** | **1.0000** | 40.00s |
 | --- | --- | --- | --- | --- | --- |
-| **Fully Corrupted System (Noise=0.005, Scatter=True, IFE=True)** | Classical PARAFAC | 0.0316 | 0.0000 | 0.0000 | 0.04s |
-| | **PETN-PARAFAC** | **0.9896** | **0.9487** | **0.9546** | 39.99s |
+| **Fully Corrupted System (Noise=0.005, Scatter=True, IFE=True)** | Classical PARAFAC (Raw) | 0.0316 | 0.0000 | 0.0000 | 0.05s |
+| | Classical PARAFAC (Interpolated) | 0.3535 | 0.0000 | 0.1344 | 0.14s |
+| | **PETN-PARAFAC** | **0.9896** | **0.9487** | **0.9546** | 39.97s |
 | --- | --- | --- | --- | --- | --- |
 
 ---
@@ -26,23 +30,24 @@ This report compares the performance of **Classical Non-Negative PARAFAC (Tensor
 ## 🔍 Key Insights & Analysis
 
 ### 1. Ideal Conditions (Scenario 1)
-*   **Observation**: Both Classical PARAFAC and PETN recover scores and loadings with near-perfect accuracy ($R^2 > 0.999$).
-*   **Takeaway**: In the absence of physical interferences, the optimization routines of both ALS (PARAFAC) and Gradient Descent (PETN) converge to the same global mathematical minimum.
+*   **Observation**: All methods converge to perfect score and loading recovery ($R^2 = 1.0000$).
+*   **Takeaway**: In the absence of physical interferences, standard ALS (PARAFAC) and Gradient Descent (PETN) yield identical mathematical and physical factorizations.
 
-### 2. Scattering Interferences (Scenario 2)
-*   **Observation**: Classical PARAFAC breaks down completely, with scores recovery dropping to **$R^2 = 0.0642$** and spectral profiles dropping to **$R^2 = 0.0000$**. Meanwhile, PETN retains near-perfect recovery (**$R^2 \ge 0.987$** across all matrices).
-*   **Takeaway**: Because Classical PARAFAC has no concept of masking, it attempts to fit the high-intensity scattering diagonal as an actual chemical loading. Since the diagonal shape is completely orthogonal to the true Gaussian fluorophore spectra, the ALS algorithm outputs unphysical spikes resulting in $0.00$ correlation. PETN's custom **Masked Loss** blinds the network to these diagonals, allowing its rigid outer-product core to smoothly interpolate the true chemical peaks underneath.
+### 2. Handling Scattering Interferences (Scenario 2)
+*   **Observation**: Raw Classical PARAFAC fails completely ($R^2 = 0.0642$ scores, $0.0000$ loadings). However, once preprocessing **Scattering Interpolation** is applied, PARAFAC performance recovers significantly, yielding **$R^2 = 0.9865$** for scores.
+*   **Observation**: PETN-PARAFAC, operating directly on the raw corrupted EEMs without any prior interpolation preprocessing, outperforms the preprocessed PARAFAC, achieving **$R^2 = 0.9993$** for scores and **$R^2 \ge 0.987$** for loading shapes.
+*   **Takeaway**: Classical PARAFAC is highly sensitive to raw scatter and requires a separate, complex interpolation preprocessing pipeline. Furthermore, interpolation introduces small spatial errors near the boundary of the scattering lines. PETN avoids this by using a **Masked Loss** to blind the model to the corrupted diagonals during backpropagation, optimizing weights directly and solely on the true valid pixels.
 
-### 3. Cuvette Inner Filter Effect (Scenario 3)
-*   **Observation**: Classical PARAFAC shows degraded concentrations recovery ($R^2 = 0.9578$) and distorted excitation loadings ($R^2 = 0.9783$). PETN resolves scores and loadings at **$R^2 \ge 0.998$**.
-*   **Takeaway**: The cuvette Inner Filter Effect (IFE) violates the linear trilinear model assumption by non-linearly suppressing emission intensity at higher concentrations. Classical PARAFAC, operating on a strictly linear model, cannot model this suppression and skews its loadings and scores to minimize fit error. PETN's **Cuvette Attenuation Head** models the non-linear Beer-Lambert absorption in the forward pass, successfully separating attenuation from the pure spectra.
+### 3. Resolving Cuvette Inner Filter Effects (Scenario 3)
+*   **Observation**: Under non-linear IFE attenuation, both Raw and Interpolated Classical PARAFAC show degraded recovery (scores $R^2 = 0.9578$). PETN-PARAFAC resolves the scores and loadings at **$R^2 \ge 0.998$**.
+*   **Takeaway**: Standard scattering interpolation cannot help with the Inner Filter Effect because IFE is a concentration-dependent, volume-wide absorption non-linearity rather than a spatial artifact. Classical PARAFAC's linear structure cannot accommodate this, leading to warped loading vectors. PETN's **Cuvette Attenuation Head** models the physical Beer-Lambert equations inside the computational graph, successfully deconvolving the non-linear attenuation.
 
-### 4. Fully Corrupted System (Scenario 4)
-*   **Observation**: Classical PARAFAC breaks down completely under combined artifacts ($R^2 = 0.0316$ for scores, $0.0000$ for loadings). PETN maintains outstanding performance, resolving concentrations at **$R^2 = 0.9896$** and loading profiles at **$R^2 \ge 0.948$**.
-*   **Takeaway**: Under combined scattering and IFE, Classical PARAFAC results are highly distorted and chemically uninterpretable. PETN successfully isolates and corrects both interferences simultaneously, proving to be a highly robust grey-box method for real-world spectroscopy calibration.
+### 4. Fully Corrupted Systems (Scenario 4)
+*   **Observation**: Under combined interferences, even with Scattering Interpolation, Classical PARAFAC breaks down completely (**$R^2 = 0.3535$** for scores, **$0.0000$** for excitation loadings). PETN-PARAFAC maintains outstanding performance, achieving **$R^2 = 0.9896$** for scores and **$R^2 \ge 0.948$** for loadings.
+*   **Takeaway**: This is the most crucial result. When a system is affected by multiple overlapping artifacts (scatter + IFE), traditional linear methods get stuck in local minima or completely fail to resolve components. PETN handles both interferences natively in a unified optimization run, yielding superior resolution and concentration predictability under complex, realistic laboratory conditions.
 
 ---
 
 ## ⚡ Computational Cost
-*   Classical PARAFAC using Alternating Least Squares (ALS) is extremely fast (~0.03s to 0.23s) as it operates directly on NumPy arrays using closed-form linear updates.
-*   PETN training uses Gradient Descent (Adam, 1500 epochs), which is more computationally intensive (~39s on CPU). However, this represents a highly acceptable trade-off given the massive gains in chemical resolution and concentration prediction accuracy.
+*   Preprocessing interpolation adds a small overhead (~0.05s) to the Classical PARAFAC pipeline, which remains extremely fast (~0.14s total).
+*   PETN-PARAFAC is slower (~40s on CPU) as it optimizes weights via iteration loops in PyTorch. However, this represents a highly acceptable trade-off given the massive gains in chemical resolution and concentration prediction accuracy.
