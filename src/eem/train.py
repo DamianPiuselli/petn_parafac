@@ -9,9 +9,9 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import linear_sum_assignment
 
-from src.generator import EEMGenerator
-from src.model import PETNParafac
-from src.loss import masked_mse_loss
+from src.eem.generator import EEMGenerator
+from src.eem.model import PETNParafac
+from src.eem.loss import masked_mse_loss
 
 class EEMDataset(Dataset):
     """
@@ -301,17 +301,17 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
     metrics['r2_M'] = r2_M
     
     # 7. Save comparison plots
-    from src.utils import plot_resolved_vs_true_profiles, plot_eem_heatmaps, plot_resolved_absorptivities
+    from src.common.utils import plot_resolved_vs_true_profiles, plot_eem_heatmaps, plot_resolved_absorptivities
     plot_resolved_vs_true_profiles(
         true_B, true_C, aligned_B, aligned_C,
         generator.ex_wavelens, generator.em_wavelens,
-        save_path='notebooks/phase3_resolved_profiles.png'
+        save_path='notebooks/eem/phase3_resolved_profiles.png'
     )
     
     plot_resolved_absorptivities(
         E_true, M_true, aligned_E, aligned_M,
         generator.ex_wavelens, generator.em_wavelens,
-        save_path='notebooks/phase3_resolved_absorptivities.png'
+        save_path='notebooks/eem/phase3_resolved_absorptivities.png'
     )
     
     # Calculate reconstructed observed EEM for heatmap display
@@ -330,7 +330,7 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
         X_reconstructed=X_reconstructed[0],
         ex_wavelens=generator.ex_wavelens,
         em_wavelens=generator.em_wavelens,
-        save_path='notebooks/phase3_eem_heatmaps.png'
+        save_path='notebooks/eem/phase3_eem_heatmaps.png'
     )
     
     # 8. Print and return metrics

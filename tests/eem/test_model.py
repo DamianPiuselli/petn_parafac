@@ -3,7 +3,7 @@ Tests for PETN Custom Model.
 """
 import torch
 import numpy as np
-from src.model import PETNParafac
+from src.eem.model import PETNParafac
 
 def get_dummy_wavelengths(num_ex=20, num_em=30):
     ex_wavelens = np.linspace(250.0, 400.0, num_ex)

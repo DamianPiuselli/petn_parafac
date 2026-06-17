@@ -3,7 +3,7 @@ Tests for Custom Masked Loss function.
 """
 import torch
 import pytest
-from src.loss import masked_mse_loss
+from src.eem.loss import masked_mse_loss
 
 def test_masked_loss_no_mask():
     """Verify that masked_mse_loss behaves like standard MSE when no mask is passed."""

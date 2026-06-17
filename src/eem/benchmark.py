@@ -13,10 +13,10 @@ from tensorly.decomposition import non_negative_parafac
 from scipy.interpolate import griddata
 from multiprocessing import Pool
 
-from src.generator import EEMGenerator
-from src.model import PETNParafac
-from src.loss import masked_mse_loss
-from src.train import match_and_align_components
+from src.eem.generator import EEMGenerator
+from src.eem.model import PETNParafac
+from src.eem.loss import masked_mse_loss
+from src.eem.train import match_and_align_components
 
 # Set TensorLy backend to numpy
 tl.set_backend('numpy')
@@ -236,7 +236,7 @@ def run_single_seed_benchmark(args):
 def main():
     import sys
     N_runs = 10
-    csv_path = 'notebooks/parafac_vs_petn_benchmark.csv'
+    csv_path = 'notebooks/eem/parafac_vs_petn_benchmark.csv'
     
     if len(sys.argv) > 1 and sys.argv[1] == '--report-only' and os.path.exists(csv_path):
         print(f"Loading cached results from {csv_path} to regenerate report...")
@@ -431,7 +431,7 @@ def main():
     report_content = "\n".join(report_lines)
     
     # Save Markdown report to notebooks
-    report_path = 'notebooks/parafac_vs_petn_benchmark_report.md'
+    report_path = 'notebooks/eem/parafac_vs_petn_benchmark_report.md'
     with open(report_path, 'w') as f:
         f.write(report_content)
     print(f"Saved Markdown report to: {report_path}")

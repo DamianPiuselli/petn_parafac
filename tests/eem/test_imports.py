@@ -17,11 +17,11 @@ def test_library_imports():
 
 def test_module_imports():
     """Verify that all internal project modules can be imported."""
-    from src.generator import EEMGenerator
-    from src.model import PETNParafac
-    from src.loss import masked_mse_loss
-    from src.train import train_petn_mvp
-    from src.utils import plot_resolved_vs_true_profiles
+    from src.eem.generator import EEMGenerator
+    from src.eem.model import PETNParafac
+    from src.eem.loss import masked_mse_loss
+    from src.eem.train import train_petn_mvp
+    from src.common.utils import plot_resolved_vs_true_profiles
     
     assert EEMGenerator is not None
     assert PETNParafac is not None

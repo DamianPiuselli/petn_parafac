@@ -1,114 +1,76 @@
-This step-by-step implementation backlog is structured like an agile development plan. We start with the absolute simplest version of the system to ensure the baseline math works, and then systematically layer on the real-world complexities (scattering, non-linearities, and dynamic masks).
+# Physics-Embedded Tensor Network (PETN) - Model Implementation Plan
+
+This implementation plan is structured as an agile development backlog. It tracks the progress of our hybrid, "Gray-Box" deep learning library across two distinct tracks: EEM Spectroscopy and Chromatography Alignment. 
 
 ---
 
-## Phase 1: The Minimum Viable Product (MVP)
+## 🔬 Track A: EEM Spectroscopy (Inner Filter Effect & Scattering)
 
-**Goal:** Build a clean, synthetic, perfectly linear data generator and confirm that our custom deep learning architecture can replicate standard PARAFAC results. No scattering, no IFE yet.
+### Phase A1: The Minimum Viable Product (MVP) | ✅ COMPLETED
+* **Goal:** Replicate standard linear PARAFAC using coordinate embeddings.
+* **Tasks:**
+  * Developed a synthetic trilinear tensor generator (3 components, Gaussians, noise).
+  * Built the PyTorch `PETNParafac` trilinear core using coordinate indexing.
+  * Verified $R^2 > 0.99$ recovery of clean uncorrupted loadings.
 
-### Step 1.1: Develop the Pure Synthetic Generator
+### Phase A2: Artifact Masking (Optical Scattering) | ✅ COMPLETED
+* **Goal:** Blinds the optimizer to high-intensity Rayleigh and Raman scattering lines.
+* **Tasks:**
+  * Added 1st/2nd order Rayleigh and water Raman scatter ridges to the simulator.
+  * Coded `masked_mse_loss` that accepts a binary mask $W$ representing scattering regions.
+  * Verified that the trilinear core successfully interpolates clean profiles directly underneath the scattering lines.
 
-* **Task:** Write a Python script using `NumPy` to generate a three-way tensor $\mathcal{X}$ ($I \times J \times K$) from true latent components ($R=3$).
-* **Details:** Use pure Gaussian profiles for the excitation and emission dimensions, and a random matrix for sample intensities. Add a tiny amount of homoscedastic Gaussian noise.
-* **Definition of Done (DoD):** A script that outputs an array of shape, for example, `(20, 60, 100)` along with the ground-truth arrays so you can benchmark against them later.
+### Phase A3: Non-Linear Physical Corrections (IFE) | ✅ COMPLETED
+* **Goal:** Resolve cuvette Inner Filter Effects (absorbance attenuation).
+* **Tasks:**
+  * Updated the simulator to inject concentration-dependent IFE attenuation based on the Lakowicz correction.
+  * Designed the **Cuvette Attenuation Head** inside the forward pass, using a learnable component-specific molar absorptivity scaling factor ($\alpha_r$) and registered background solvent profiles ($\text{Abs}_{\text{bg}}$) to model physical attenuation $\gamma \in [0, 1]$.
+  * Verified separation of linear chemical signals from non-linear absorbance.
 
-### Step 1.2: Build the Trilinear Core Model
+### Phase A4: Real-World Benchmark Validation | 🔄 IN PROGRESS
+* **Goal:** Transition from synthetic data to real instrument runs.
+* **Tasks:**
+  * [x] Ingest and preprocess the Copenhagen Honey dataset and the Amino Acids mixture dataset.
+  * [x] Evaluate resolved score clusters: achieved **100% binary adulteration accuracy** and **72.7% multiclass origin accuracy** on Honey.
+  * [ ] Validate EEM-PETN against real-world environmental mixtures with variable scattering matrices.
 
-* **Task:** Implement the embedding-based trilinear core in `TensorFlow` or `PyTorch`.
-* **Details:** Map inputs `(sample_idx, ex_idx, em_idx)` to their respective non-negative embedding layers. The model should output the dot product of these three embeddings.
-* **DoD:** The model compiles, accepts a batch of coordinate triplets, and outputs a predicted intensity scalar for each triplet.
-
-### Step 1.3: Train and Validate the MVP
-
-* **Task:** Flatten your synthetic tensor into a coordinate dataframe `[sample_idx, ex_idx, em_idx, true_intensity]` and train the model.
-* **Details:** Extract the trained weights from the embedding layers after convergence. Plot them against the ground-truth Gaussians generated in Step 1.1.
-* **DoD:** An $R^2 > 0.99$ correlation between predicted weights and true spectral shapes.
-
----
-
-## Phase 2: Simulating and Masking Instrument Artifacts
-
-**Goal:** Introduce scattering lines to the data generator and teach the model to ignore them using a predefined mask.
-
-### Step 2.1: Add Scattering to the Generator
-
-* **Task:** Update the synthetic generator script to inject 1st-order Rayleigh ($\lambda_{em} = \lambda_{ex}$) and Water Raman scatter lines into the tensor.
-* **Details:** Make these lines high-intensity ridges that completely overwrite the underlying fluorescence signal at those specific pixel coordinates.
-* **DoD:** Visual inspection of a simulated EEM heatmap showing distinct diagonal bands cutting through the chemical peaks.
-
-### Step 2.2: Implement the Static Masked Loss Function
-
-* **Task:** Code a custom loss function (`masked_mse_loss`) that reads a hardcoded binary mask matrix $W$.
-* **Details:** $W$ equals `0` on the scattering diagonals and `1` everywhere else. The loss function must multiply the squared errors by this mask before calculating the mean, effectively blinding the backpropagation step to the scattering zones.
-* **DoD:** Successful training on corrupted data where the model recovers the pure chemical profiles *underneath* the scattering zones without capturing the artifacts.
+### Phase A5: Extensions & Production Features | 📋 BACKLOG
+* **Step A5.1: Semi-Supervised Standard Constraints**
+  * Constrain score embeddings $A$ of calibration standards to their known physical values using a supervised auxiliary loss term to resolve absolute concentration scales.
+* **Step A5.2: Frozen Inference Projection**
+  * Create a utility to freeze trained loading embeddings ($B, C, \alpha$) and solve a non-linear optimizer to estimate concentrations for new, unknown samples.
+* **Step A5.3: MLP-Based Geometry Calibration**
+  * Integrate a small MLP to learn the instrument-specific effective pathlength distribution, correcting for cuvette differences across spectrofluorometers.
 
 ---
 
-## Phase 3: The Non-Linear Upgrade (Inner Filter Effects)
+## 🧪 Track B: Chromatography Alignment (GC-MS / HPLC-DAD Time Shifting)
 
-**Goal:** Introduce the chemical non-linearity (absorbance attenuation) and build the hybrid gray-box head to fix it.
+### Phase B1: MVP Linear Warping Alignment | ✅ COMPLETED
+* **Goal:** Resolve components under run-to-run linear shifting and stretching.
+* **Tasks:**
+  * [x] Developed [generator.py](file:///home/damianp/Proyectos/pinn_parafac/src/chroma/generator.py) to simulate overlapping chromatographic peaks subject to random delay offsets ($\beta_i$) and flow rate stretches ($\alpha_i$).
+  * [x] Implemented the `ChromaPETN` model in [model.py](file:///home/damianp/Proyectos/pinn_parafac/src/chroma/model.py) using a **differentiable warping head** and a custom **differentiable 1D linear interpolation** layer.
+  * [x] Implemented the **mean-centering constraint** ($\sum \alpha_i = 0, \sum \beta_i = 0$) inside `project_constraints()` to resolve the shift-translation and scaling ambiguities.
+  * [x] Coded unit and integration tests in `tests/chroma/` (all passing cleanly).
+  * [x] Added visual reporting in [train.py](file:///home/damianp/Proyectos/pinn_parafac/src/chroma/train.py) that saves resolved profiles, TIC alignment comparisons, and parameter correlations to `notebooks/chroma/`.
 
-### Step 3.1: Inject IFE into the Simulation
+### Phase B2: Non-Linear Warping (Splines & Quadratic Upgrade) | 🎯 NEXT MILESTONE
+* **Goal:** Handle non-linear elution shifting common in gradient HPLC runs.
+* **Tasks:**
+  * Upgrade the warping head to support **quadratic warping** ($\Delta_i(t) = \alpha_i t^2 + \beta_i t + \gamma_i$).
+  * Implement **piecewise linear spline warping** defined by $M$ control points per sample, ensuring monotonicity by enforcing positive derivative increments between control points.
+  * Add unit tests verifying warping monotonicity on non-linear shifts.
 
-* **Task:** Update the generator to apply the Lakowicz geometric correction formula.
-* **Details:** Define an independent absorbance matrix for the sample background. Multiply the true tensor elements by $10^{-(A_{ex} + A_{em})}$. This will visibly skew and suppress the emission peaks at higher concentrations.
-* **DoD:** Synthetic data that explicitly breaks the linear PARAFAC assumptions (i.e., if you try to fit Phase 1's model to this data, the spectral recovery fails).
+### Phase B3: Real-World Chromatographic Validation | 📋 BACKLOG
+* **Goal:** Ingest and align real instrument runs (HPLC-DAD or GC-MS).
+* **Tasks:**
+  * Preprocess standard datasets (e.g., polycyclic aromatic hydrocarbons (PAHs) or organic acids).
+  * Train Chroma-PETN to align raw peaks and extract pure UV-vis/mass spectra.
+  * Compare resolved scores against reference concentrations.
 
-### Step 3.2: Construct the Hybrid "Gray-Box" Network
-
-* **Task:** Add the parallel Dense Neural Network (the "Black-Box" head) to the architecture.
-* **Details:** This sub-network takes `(ex_idx, em_idx)` as inputs, passes them through dense layers with ReLU activations, ends with a Sigmoid layer, and element-wise multiplies its output with the trilinear core output.
-* **DoD:** The network architecture accurately represents the physical equation: $\hat{I}_{obs} = I_{true} \times \gamma_{ife}$.
-
-### Step 3.3: Evaluate the Complete Synthetic Pipeline
-
-* **Task:** Train the hybrid network on the IFE-corrupted, scattered dataset.
-* **Details:** Verify that the deep learning head accurately maps the non-linear attenuation landscape while the trilinear embedding layer successfully extracts the true unattenuated chemical components.
-* **DoD:** Reaching equivalent accuracy ($R^2 > 0.95$) on highly non-linear data as achieved in the simple Phase 1 baseline.
-
----
-
-## Phase 4: Autonomy and Real-World Validation
-
-**Goal:** Transition from synthetic data to real-world datasets, automating the discovery of parameters.
-
-### Step 4.1: Develop Dynamic Scattering Detection (Optional / Advanced)
-
-* **Task:** Replace the predefined static mask with a dynamic loss-weighting network.
-* **Details:** Build a secondary network head that identifies spatial anomalies in the residuals and dynamically sets $W \rightarrow 0$ for high-error, non-trilinear regions during early epochs.
-* **DoD:** The model successfully detects and isolates scattering lines on a completely new synthetic layout without manual configuration.
-
-### Step 4.2: Import and Preprocess Real Benchmarks
-
-* **Task:** Write a data pipeline to ingest open-access `.mzML`, `.CDF`, or `.csv` files from the University of Copenhagen repository (e.g., the Honey or Micropollutants dataset).
-* **Details:** Parse the files into the required coordinate format (`[Sample, Ex, Em, Intensity]`) used by the deep learning framework.
-* **DoD:** Successful loading and batching of real instrument data through the training loop.
-
-### Step 4.3: Final Benchmarking & Slide Preparation
-
-* **Task:** Run the completed model against the real dataset. Compare its performance, execution speed, and component resolution clarity against classical PARAFAC.
-* **DoD:** Production of high-resolution comparative plots (True vs. Recovered Profiles) ready to be embedded into the final symposium presentation.
-
----
-
-## Phase 5: Future Work & Production Features (Backlog)
-
-### Step 5.1: Semi-Supervised Training Guidance
-* **Task:** Implement an auxiliary supervised loss term $\lambda \mathcal{L}_{\text{supervised}}$ to constrain the score embeddings ($A_{std}$) of calibration standards to their known physical concentrations during training.
-* **Benefits:** Guides component separation in complex mixtures and resolves absolute physical units for molar absorptivity ($\alpha_r$) and scores.
-
-### Step 5.2: Frozen Projection Inference Utility
-* **Task:** Implement a single-sample inference helper `predict_unknown(new_eem, model)` that freezes the trained loading parameters ($B$, $C$, $\alpha$) and solves a non-linear optimization problem to predict concentrations ($a_{\text{new}}$) for new unknown EEM samples.
-
-### Step 5.3: MLP-based Instrumental & Cuvette Geometry Calibration
-* **Task:** Integrate a small multi-layer perceptron (MLP) head to learn the instrument-specific effective pathlength distribution function $\rho(\lambda_{ex}, \lambda_{em})$, automating cuvette geometry correction across different spectrofluorometers.
-
-### Step 5.4: Environmental Chemical Dynamics (pH/Temperature-Dependent Embeddings)
-* **Task:** Condition the excitation and emission embeddings on auxiliary sample parameters (pH, temperature) using a neural mapping function to resolve spectra in fluctuating environmental ecosystems.
-
-### Step 5.5: Bayesian Variational Embeddings for Uncertainty Quantification
-* **Task:** Replace the deterministic score and loading parameters with variational distributions to compute analytical confidence intervals (QA/QC metrics) for concentration predictions.
-
----
-
-Which phase or specific tool within this backlog would you like to start drafting first? We can begin writing the core Python code for the synthetic generator or design the neural network structure.
+### Phase B4: Automated Peak Identification | 📋 BACKLOG
+* **Goal:** Integrate structural database matching directly into training.
+* **Tasks:**
+  * Add a spectral database mapping layer (e.g., matching resolved mass spectra embeddings $C$ against NIST or Wiley database spectra).
+  * Compute similarity matching on the fly during training to automatically annotate chemical components.

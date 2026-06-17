@@ -2,7 +2,7 @@
 Tests for EEM Synthetic Data Generator.
 """
 import numpy as np
-from src.generator import EEMGenerator
+from src.eem.generator import EEMGenerator
 
 def test_generator_initialization():
     """Verify that EEMGenerator initializes with correct shapes and wavelengths."""

@@ -9,8 +9,8 @@ import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
 
-from src.model import PETNParafac
-from src.loss import masked_mse_loss
+from src.eem.model import PETNParafac
+from src.eem.loss import masked_mse_loss
 
 def generate_honey_scattering_mask(ex_wavelens, em_wavelens):
     """
@@ -433,7 +433,7 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     axes[2].legend(ncol=2)
     
     plt.tight_layout()
-    plots_path = 'notebooks/honey_resolved_profiles.png'
+    plots_path = 'notebooks/eem/honey_resolved_profiles.png'
     plt.savefig(plots_path, dpi=200)
     plt.close()
     print(f"Saved resolved profiles to {plots_path}")
@@ -462,7 +462,7 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.legend(title='Botanical Origin', fontsize=10)
     
-    pca_path = 'notebooks/honey_pca_separation.png'
+    pca_path = 'notebooks/eem/honey_pca_separation.png'
     plt.tight_layout()
     plt.savefig(pca_path, dpi=200)
     plt.close()

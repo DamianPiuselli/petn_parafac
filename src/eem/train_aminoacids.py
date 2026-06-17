@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 from scipy.io import loadmat
 from scipy.optimize import linear_sum_assignment
 
-from src.model import PETNParafac
-from src.loss import masked_mse_loss
+from src.eem.model import PETNParafac
+from src.eem.loss import masked_mse_loss
 
 def generate_aminoacids_scattering_mask(ex_wavelens, em_wavelens):
     """
@@ -240,8 +240,8 @@ def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43):
     axes[2].legend(fontsize='small', ncol=3, loc='upper center', bbox_to_anchor=(0.5, 1.15))
     
     plt.tight_layout()
-    os.makedirs('notebooks', exist_ok=True)
-    plot_path = 'notebooks/aminoacids_resolved_profiles.png'
+    os.makedirs('notebooks/eem', exist_ok=True)
+    plot_path = 'notebooks/eem/aminoacids_resolved_profiles.png'
     plt.savefig(plot_path, dpi=300)
     plt.close()
     print(f"\nResolved profiles plot saved to {plot_path}")

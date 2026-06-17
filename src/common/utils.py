@@ -168,4 +168,115 @@ def plot_resolved_absorptivities(true_E, true_M, pred_E, pred_M, ex_wavelens, em
         plt.show()
     plt.close()
 
+def plot_chroma_resolved_vs_true_profiles(true_B, true_C, pred_B, pred_C, time_grid, spec_grid, save_path=None):
+    """
+    Plots true vs. resolved chromatography profiles (B) and spectral profiles (C) side by side.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    num_components = true_B.shape[1]
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+    
+    # 1. Chromatography profiles
+    for r in range(num_components):
+        label_true = f'True Peak {r+1}'
+        label_pred = f'Resolved Peak {r+1}'
+        axes[0].plot(time_grid, true_B[:, r], label=label_true, color=colors[r % len(colors)], linestyle='--', alpha=0.7)
+        axes[0].plot(time_grid, pred_B[:, r], label=label_pred, color=colors[r % len(colors)], linewidth=2)
+    axes[0].set_title('Chromatography Profiles (B)')
+    axes[0].set_xlabel('Time')
+    axes[0].set_ylabel('Normalized Intensity')
+    axes[0].grid(True, linestyle=':', alpha=0.6)
+    axes[0].legend()
+    
+    # 2. Spectral profiles
+    for r in range(num_components):
+        label_true = f'True Spec {r+1}'
+        label_pred = f'Resolved Spec {r+1}'
+        axes[1].plot(spec_grid, true_C[:, r], label=label_true, color=colors[r % len(colors)], linestyle='--', alpha=0.7)
+        axes[1].plot(spec_grid, pred_C[:, r], label=label_pred, color=colors[r % len(colors)], linewidth=2)
+    axes[1].set_title('Spectral Profiles (C)')
+    axes[1].set_xlabel('Spectral Channel')
+    axes[1].set_ylabel('Normalized Intensity')
+    axes[1].grid(True, linestyle=':', alpha=0.6)
+    axes[1].legend()
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+        print(f"Resolved profiles comparison plot saved to {save_path}")
+    else:
+        plt.show()
+    plt.close()
+
+def plot_chroma_alignment_comparison(time_grid, X_unaligned, X_aligned, save_path=None):
+    """
+    Plots unaligned vs. aligned chromatograms across all samples.
+    We sum along the spectral dimension to obtain the Total Ion Chromatogram (TIC) equivalent.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    num_samples = X_unaligned.shape[0]
+    
+    # Sum over spectra to get TIC
+    tic_unaligned = np.sum(X_unaligned, axis=2)
+    tic_aligned = np.sum(X_aligned, axis=2)
+    
+    # 1. Unaligned
+    for i in range(num_samples):
+        axes[0].plot(time_grid, tic_unaligned[i], alpha=0.7)
+    axes[0].set_title('Un-aligned Chromatograms (Observed)')
+    axes[0].set_xlabel('Time')
+    axes[0].set_ylabel('Total Intensity (TIC)')
+    axes[0].grid(True, linestyle=':', alpha=0.6)
+    
+    # 2. Aligned
+    for i in range(num_samples):
+        axes[1].plot(time_grid, tic_aligned[i], alpha=0.7)
+    axes[1].set_title('Chroma-PETN Aligned Chromatograms')
+    axes[1].set_xlabel('Time')
+    axes[1].set_ylabel('Total Intensity (TIC)')
+    axes[1].grid(True, linestyle=':', alpha=0.6)
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+        print(f"Alignment comparison plot saved to {save_path}")
+    else:
+        plt.show()
+    plt.close()
+
+def plot_chroma_warp_parameters(true_shifts, true_stretches, pred_shifts, pred_stretches, save_path=None):
+    """
+    Plots true vs predicted shift and stretch factors across all samples.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    num_samples = len(true_shifts)
+    sample_indices = np.arange(num_samples)
+    
+    # 1. Shifts
+    axes[0].scatter(sample_indices, true_shifts, label='True Shift', color='#d62728', marker='o', s=100)
+    axes[0].scatter(sample_indices, pred_shifts, label='Recovered Shift', color='#1f77b4', marker='x', s=100, linewidths=2)
+    axes[0].set_title('Shift Parameter Recovery (beta)')
+    axes[0].set_xlabel('Sample Index')
+    axes[0].set_ylabel('Shift (Time units)')
+    axes[0].grid(True, linestyle=':', alpha=0.6)
+    axes[0].legend()
+    
+    # 2. Stretches
+    axes[1].scatter(sample_indices, true_stretches, label='True Stretch', color='#d62728', marker='o', s=100)
+    axes[1].scatter(sample_indices, pred_stretches, label='Recovered Stretch', color='#1f77b4', marker='x', s=100, linewidths=2)
+    axes[1].set_title('Stretch Parameter Recovery (alpha)')
+    axes[1].set_xlabel('Sample Index')
+    axes[1].set_ylabel('Stretch Factor')
+    axes[1].grid(True, linestyle=':', alpha=0.6)
+    axes[1].legend()
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+        print(f"Warp parameters plot saved to {save_path}")
+    else:
+        plt.show()
+    plt.close()
+
+
 
