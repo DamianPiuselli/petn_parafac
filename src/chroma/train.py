@@ -148,15 +148,24 @@ def evaluate_chroma_alignment(model, dataset):
     a_sims = [calculate_cosine_similarity(A_pred_ordered[:, r], A_true[:, r]) for r in range(R)]
     
     # Evaluate shifts
+    # Retrieve raw predicted parameters (already centered during project_constraints, but centered here for safety)
     shifts_pred = model.warp_shift.detach().cpu().numpy()
     stretches_pred = model.warp_stretch.detach().cpu().numpy()
     
+    shifts_pred_centered = shifts_pred - shifts_pred.mean()
+    stretches_pred_centered = stretches_pred - stretches_pred.mean()
+    
+    # Map generator coefficients: shift_model = shift_gen / (1 + stretch_gen)
     shifts_true_mapped = dataset['shifts'] / (1.0 + dataset['stretches'])
     stretches_true_mapped = dataset['stretches'] / (1.0 + dataset['stretches'])
     
-    shift_corr = np.corrcoef(shifts_pred, shifts_true_mapped)[0, 1]
-    stretch_corr = np.corrcoef(stretches_pred, stretches_true_mapped)[0, 1]
-    mean_shift_error = np.mean(np.abs(shifts_pred - shifts_true_mapped))
+    # Mean-center the true parameters to align with the model's centered parameter space
+    shifts_true_centered = shifts_true_mapped - shifts_true_mapped.mean()
+    stretches_true_centered = stretches_true_mapped - stretches_true_mapped.mean()
+    
+    shift_corr = np.corrcoef(shifts_pred_centered, shifts_true_centered)[0, 1]
+    stretch_corr = np.corrcoef(stretches_pred_centered, stretches_true_centered)[0, 1]
+    mean_shift_error = np.mean(np.abs(shifts_pred_centered - shifts_true_centered))
     
     # Calculate the fully aligned (unshifted) reconstructed tensor
     X_aligned = np.einsum('ir,jr,kr->ijk', A_pred_ordered, B_pred_ordered, C_pred_ordered)
@@ -210,7 +219,7 @@ def evaluate_chroma_alignment(model, dataset):
     
     # 3. Warp parameters recovery plot
     plot_chroma_warp_parameters(
-        shifts_true_mapped, stretches_true_mapped, shifts_pred, stretches_pred,
+        shifts_true_centered, stretches_true_centered, shifts_pred_centered, stretches_pred_centered,
         save_path='notebooks/chroma/chroma_warp_parameters.png'
     )
     

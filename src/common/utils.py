@@ -253,20 +253,20 @@ def plot_chroma_warp_parameters(true_shifts, true_stretches, pred_shifts, pred_s
     sample_indices = np.arange(num_samples)
     
     # 1. Shifts
-    axes[0].scatter(sample_indices, true_shifts, label='True Shift', color='#d62728', marker='o', s=100)
-    axes[0].scatter(sample_indices, pred_shifts, label='Recovered Shift', color='#1f77b4', marker='x', s=100, linewidths=2)
-    axes[0].set_title('Shift Parameter Recovery (beta)')
+    axes[0].scatter(sample_indices, true_shifts, label='True Shift (Mean-Centered)', color='#d62728', marker='o', s=100)
+    axes[0].scatter(sample_indices, pred_shifts, label='Recovered Shift (Mean-Centered)', color='#1f77b4', marker='x', s=100, linewidths=2)
+    axes[0].set_title('Shift Parameter Recovery (beta - Mean-Centered)')
     axes[0].set_xlabel('Sample Index')
-    axes[0].set_ylabel('Shift (Time units)')
+    axes[0].set_ylabel('Mean-Centered Shift (Time units)')
     axes[0].grid(True, linestyle=':', alpha=0.6)
     axes[0].legend()
     
     # 2. Stretches
-    axes[1].scatter(sample_indices, true_stretches, label='True Stretch', color='#d62728', marker='o', s=100)
-    axes[1].scatter(sample_indices, pred_stretches, label='Recovered Stretch', color='#1f77b4', marker='x', s=100, linewidths=2)
-    axes[1].set_title('Stretch Parameter Recovery (alpha)')
+    axes[1].scatter(sample_indices, true_stretches, label='True Stretch (Mean-Centered)', color='#d62728', marker='o', s=100)
+    axes[1].scatter(sample_indices, pred_stretches, label='Recovered Stretch (Mean-Centered)', color='#1f77b4', marker='x', s=100, linewidths=2)
+    axes[1].set_title('Stretch Parameter Recovery (alpha - Mean-Centered)')
     axes[1].set_xlabel('Sample Index')
-    axes[1].set_ylabel('Stretch Factor')
+    axes[1].set_ylabel('Mean-Centered Stretch Factor')
     axes[1].grid(True, linestyle=':', alpha=0.6)
     axes[1].legend()
     
