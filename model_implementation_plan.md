@@ -49,11 +49,11 @@ This implementation plan is structured as an agile development backlog. It track
 ### Phase B1: MVP Linear Warping Alignment | ✅ COMPLETED
 * **Goal:** Resolve components under run-to-run linear shifting and stretching.
 * **Tasks:**
-  * [x] Developed [generator.py](file:///home/damianp/Proyectos/pinn_parafac/src/chroma/generator.py) to simulate overlapping chromatographic peaks subject to random delay offsets ($\beta_i$) and flow rate stretches ($\alpha_i$).
-  * [x] Implemented the `ChromaPETN` model in [model.py](file:///home/damianp/Proyectos/pinn_parafac/src/chroma/model.py) using a **differentiable warping head** and a custom **differentiable 1D linear interpolation** layer.
+  * [x] Developed [generator.py](./src/chroma/generator.py) to simulate overlapping chromatographic peaks subject to random delay offsets ($\beta_i$) and flow rate stretches ($\alpha_i$).
+  * [x] Implemented the `ChromaPETN` model in [model.py](./src/chroma/model.py) using a **differentiable warping head** and a custom **differentiable 1D linear interpolation** layer.
   * [x] Implemented the **mean-centering constraint** ($\sum \alpha_i = 0, \sum \beta_i = 0$) inside `project_constraints()` to resolve the shift-translation and scaling ambiguities.
   * [x] Coded unit and integration tests in `tests/chroma/` (all passing cleanly).
-  * [x] Added visual reporting in [train.py](file:///home/damianp/Proyectos/pinn_parafac/src/chroma/train.py) that saves resolved profiles, TIC alignment comparisons, and parameter correlations to `notebooks/chroma/`.
+  * [x] Added visual reporting in [train.py](./src/chroma/train.py) that saves resolved profiles, TIC alignment comparisons, and parameter correlations to `notebooks/chroma/`.
 
 ### Phase B2: Non-Linear Warping (Splines & Quadratic Upgrade) | 🎯 NEXT MILESTONE
 * **Goal:** Handle non-linear elution shifting common in gradient HPLC runs.

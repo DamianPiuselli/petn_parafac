@@ -14,7 +14,7 @@ The library is organized into two self-contained subpackages targeting distinct 
   * **White-Box Core:** Trilinear PARAFAC embeddings with hardcoded non-negative constraints.
   * **Gray-Box Attenuation Head:** Implements Beer-Lambert and Lakowicz cuvette equations to predict sample-specific attenuation factors $\gamma \in [0, 1]$.
   * **Custom Masked Loss:** Blinds backpropagation to scattering zones, forcing the rigid trilinear core to smoothly interpolate the true underlying chemical signal.
-* **Documentation:** Detailed guide available at [src/eem/README.md](file:///home/damianp/Proyectos/pinn_parafac/src/eem/README.md).
+* **Documentation:** Detailed guide available at [src/eem/README.md](./src/eem/README.md).
 
 ### 2. Chromatography with Retention Time Shifting (`src/chroma/`)
 * **Physical Target:** Resolves non-trilinearity in GC-MS or HPLC-DAD datasets caused by column flow rate drift, temperature fluctuations, and injection delay shifts.
@@ -22,6 +22,7 @@ The library is organized into two self-contained subpackages targeting distinct 
   * **Differentiable Warping Head:** Parameterizes sample-specific time stretching ($\alpha_i$) and shifting ($\beta_i$) coefficients.
   * **Differentiable 1D Interpolation:** Natively queries a common/aligned chromatography profile embedding ($B$) at warped continuous coordinates.
   * **Mean-Centering Constraint:** Resolves translation/scaling degeneracy by forcing the learned warping parameters to average to zero, anchoring the canonical profile coordinates.
+* **Documentation:** Detailed guide available at [src/chroma/README.md](./src/chroma/README.md).
 
 ---
 
