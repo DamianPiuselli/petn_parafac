@@ -59,7 +59,7 @@ class ChromatographicDataGenerator:
         """
         return self.rng.uniform(0.5, 2.0, size=(self.num_samples, self.num_components))
 
-    def generate_dataset(self, noise_std=0.02, max_shift=0.06, max_stretch=0.08):
+    def generate_dataset(self, noise_std=0.02, max_shift=0.06, max_stretch=0.08, warp_type='linear'):
         """
         Generates the synthetic shifted dataset.
         
@@ -67,6 +67,7 @@ class ChromatographicDataGenerator:
             noise_std: standard deviation of homoscedastic Gaussian noise.
             max_shift: maximum shift offset (translation).
             max_stretch: maximum stretch factor (scaling).
+            warp_type: warping model to use ('linear', 'quadratic', 'spline')
             
         Returns:
             dataset: dict containing data matrix X, true matrices A, B, C, and shift parameters.
@@ -75,23 +76,38 @@ class ChromatographicDataGenerator:
         B, C = self.generate_profiles()
         
         # Generate sample-specific shifting parameters
-        # Shift: constant offset delta_t
-        # Stretch: scaling factor s
-        # Warp formula: t_observed = s * t_true + delta_t
-        # Therefore, t_true = (t_observed - delta_t) / s
         true_shifts = self.rng.uniform(-max_shift, max_shift, size=self.num_samples)
         true_stretches = self.rng.uniform(-max_stretch, max_stretch, size=self.num_samples)
+        
+        # For quadratic warp: t_warped = t - (alpha * t^2 + beta * t + gamma)
+        true_alphas = self.rng.uniform(-max_stretch * 0.5, max_stretch * 0.5, size=self.num_samples)
+        true_betas = self.rng.uniform(-max_stretch * 0.8, max_stretch * 0.8, size=self.num_samples)
+        true_gammas = self.rng.uniform(-max_shift, max_shift, size=self.num_samples)
         
         X = np.zeros((self.num_samples, self.num_time, self.num_spec))
         X_true_unshifted = np.zeros((self.num_samples, self.num_time, self.num_spec))
         
         for i in range(self.num_samples):
-            shift = true_shifts[i]
-            stretch = true_stretches[i]
+            if warp_type == 'linear':
+                shift = true_shifts[i]
+                stretch = true_stretches[i]
+                t_warped = (self.time_grid - shift) / (1.0 + stretch)
+            elif warp_type == 'quadratic':
+                alpha = true_alphas[i]
+                beta = true_betas[i]
+                gamma = true_gammas[i]
+                t_warped = self.time_grid - (alpha * (self.time_grid ** 2) + beta * self.time_grid + gamma)
+            elif warp_type == 'spline':
+                # Sine-wave perturbation representing non-linear column gradient drift:
+                # t' = t - (shift + stretch * sin(pi * t))
+                shift = true_shifts[i]
+                stretch = true_stretches[i] * 0.5  # scaling down to keep warp monotonic
+                t_warped = self.time_grid - (shift + stretch * np.sin(np.pi * self.time_grid))
+            else:
+                raise ValueError(f"Unknown warp_type: {warp_type}")
             
-            # Compute warped time grid for sample i
-            # t_true = (t_observed - shift) / (1.0 + stretch)
-            t_warped = (self.time_grid - shift) / (1.0 + stretch)
+            # Clamp warped coordinates to [0, 1] to prevent extrapolation artifacts
+            t_warped = np.clip(t_warped, 0.0, 1.0)
             
             # Interpolate B at warped time points
             B_warped = np.zeros((self.num_time, self.num_components))
@@ -115,5 +131,9 @@ class ChromatographicDataGenerator:
             'B': B,
             'C': C,
             'shifts': true_shifts,
-            'stretches': true_stretches
+            'stretches': true_stretches,
+            'alphas': true_alphas,
+            'betas': true_betas,
+            'gammas': true_gammas,
+            'warp_type': warp_type
         }

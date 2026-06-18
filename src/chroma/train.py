@@ -10,7 +10,7 @@ import numpy as np
 from src.chroma.model import ChromaPETN
 from src.chroma.generator import ChromatographicDataGenerator
 
-def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001):
+def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_type='linear', num_segments=4):
     """
     Trains the Chroma-PETN model on the provided dataset.
     
@@ -19,6 +19,8 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001):
         epochs: Number of training epochs
         lr: Learning rate for Adam optimizer
         warp_reg_coef: Weight for warp parameter regularization
+        warp_type: Warping model type ('linear', 'quadratic', 'spline')
+        num_segments: Number of uniform segments for spline warp type
         
     Returns:
         model: Trained ChromaPETN model instance
@@ -27,7 +29,7 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001):
     I, J, K = X.shape
     
     # Instantiate model
-    model = ChromaPETN(num_samples=I, num_time=J, num_spec=K, num_components=3)
+    model = ChromaPETN(num_samples=I, num_time=J, num_spec=K, num_components=3, warp_type=warp_type, num_segments=num_segments)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     
     # Generate complete coordinate triplets for full-batch training
@@ -39,8 +41,8 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001):
     coords_k = coords_k.flatten()
     y_target = X[coords_i, coords_j, coords_k]
     
-    print(f"Training Chroma-PETN model for {epochs} epochs...")
-    for epoch in range(epochs + 1):
+    print(f"Training Chroma-PETN model ({warp_type} warp) for {epochs} epochs...")
+    for epoch in range(epoch_val := (epochs + 1)):
         optimizer.zero_grad()
         
         # Forward pass
@@ -50,7 +52,12 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001):
         loss_mse = nn.functional.mse_loss(y_pred, y_target)
         
         # Warp parameter regularization
-        loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_stretch**2) + torch.mean(model.warp_shift**2))
+        if model.warp_type == 'linear':
+            loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_stretch**2) + torch.mean(model.warp_shift**2))
+        elif model.warp_type == 'quadratic':
+            loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_alpha**2) + torch.mean(model.warp_beta**2) + torch.mean(model.warp_gamma**2))
+        elif model.warp_type == 'spline':
+            loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_shift**2) + torch.mean(model.warp_log_increments**2))
         
         # Total loss
         loss = loss_mse + loss_warp_reg
@@ -91,6 +98,7 @@ def evaluate_chroma_alignment(model, dataset):
     B_true = dataset['B'].copy()
     C_true = dataset['C'].copy()
     
+    I, J, K = dataset['X'].shape
     R = A_true.shape[1]
     
     # Compute spectral similarity matrix to match components
@@ -147,26 +155,76 @@ def evaluate_chroma_alignment(model, dataset):
     c_sims = [calculate_cosine_similarity(C_pred_ordered[:, r], C_true[:, r]) for r in range(R)]
     a_sims = [calculate_cosine_similarity(A_pred_ordered[:, r], A_true[:, r]) for r in range(R)]
     
-    # Evaluate shifts
-    # Retrieve raw predicted parameters (already centered during project_constraints, but centered here for safety)
-    shifts_pred = model.warp_shift.detach().cpu().numpy()
-    stretches_pred = model.warp_stretch.detach().cpu().numpy()
+    # Evaluate generalized coordinate alignment error across all samples
+    t_observed = np.linspace(0.0, 1.0, J)
+    mae_list = []
+    for i in range(I):
+        # True warped time
+        ds_warp_type = dataset.get('warp_type', 'linear')
+        if ds_warp_type == 'linear':
+            t_true = (t_observed - dataset['shifts'][i]) / (1.0 + dataset['stretches'][i])
+        elif ds_warp_type == 'quadratic':
+            alpha = dataset['alphas'][i]
+            beta = dataset['betas'][i]
+            gamma = dataset['gammas'][i]
+            t_true = t_observed - (alpha * (t_observed ** 2) + beta * t_observed + gamma)
+        elif ds_warp_type == 'spline':
+            shift = dataset['shifts'][i]
+            stretch = dataset['stretches'][i] * 0.5
+            t_true = t_observed - (shift + stretch * np.sin(np.pi * t_observed))
+        else:
+            t_true = (t_observed - dataset['shifts'][i]) / (1.0 + dataset['stretches'][i])
+        
+        # Predicted warped time
+        if model.warp_type == 'linear':
+            stretch_pred = model.warp_stretch[i].item()
+            shift_pred = model.warp_shift[i].item()
+            t_pred = t_observed - (stretch_pred * t_observed + shift_pred)
+        elif model.warp_type == 'quadratic':
+            alpha_pred = model.warp_alpha[i].item()
+            beta_pred = model.warp_beta[i].item()
+            gamma_pred = model.warp_gamma[i].item()
+            t_pred = t_observed - (alpha_pred * (t_observed**2) + beta_pred * t_observed + gamma_pred)
+        elif model.warp_type == 'spline':
+            shift_pred = model.warp_shift[i].item()
+            log_inc_pred = model.warp_log_increments[i].detach().cpu().numpy()
+            inc_pred = (1.0 / model.num_segments) * np.exp(log_inc_pred)
+            w_pred = shift_pred + np.cumsum(np.concatenate([[0.0], inc_pred]))
+            
+            # Interpolate to find t_pred
+            val = t_observed * model.num_segments
+            k = np.clip(np.floor(val).astype(int), 0, model.num_segments - 1)
+            u = val - k
+            t_pred = (1.0 - u) * w_pred[k] + u * w_pred[k + 1]
+            
+        t_pred_centered = t_pred - t_pred.mean()
+        t_true_centered = t_true - t_true.mean()
+        mae_list.append(np.mean(np.abs(t_pred_centered - t_true_centered)))
+        
+    mean_coord_mae = np.mean(mae_list)
     
-    shifts_pred_centered = shifts_pred - shifts_pred.mean()
-    stretches_pred_centered = stretches_pred - stretches_pred.mean()
+    # Evaluate shifts for linear warp
+    shift_corr = 0.0
+    stretch_corr = 0.0
+    mean_shift_error = mean_coord_mae
     
-    # Map generator coefficients: shift_model = shift_gen / (1 + stretch_gen)
-    shifts_true_mapped = dataset['shifts'] / (1.0 + dataset['stretches'])
-    stretches_true_mapped = dataset['stretches'] / (1.0 + dataset['stretches'])
-    
-    # Mean-center the true parameters to align with the model's centered parameter space
-    shifts_true_centered = shifts_true_mapped - shifts_true_mapped.mean()
-    stretches_true_centered = stretches_true_mapped - stretches_true_mapped.mean()
-    
-    shift_corr = np.corrcoef(shifts_pred_centered, shifts_true_centered)[0, 1]
-    stretch_corr = np.corrcoef(stretches_pred_centered, stretches_true_centered)[0, 1]
-    mean_shift_error = np.mean(np.abs(shifts_pred_centered - shifts_true_centered))
-    
+    if model.warp_type == 'linear':
+        shifts_pred = model.warp_shift.detach().cpu().numpy()
+        stretches_pred = model.warp_stretch.detach().cpu().numpy()
+        
+        shifts_pred_centered = shifts_pred - shifts_pred.mean()
+        stretches_pred_centered = stretches_pred - stretches_pred.mean()
+        
+        shifts_true_mapped = dataset['shifts'] / (1.0 + dataset['stretches'])
+        stretches_true_mapped = dataset['stretches'] / (1.0 + dataset['stretches'])
+        
+        shifts_true_centered = shifts_true_mapped - shifts_true_mapped.mean()
+        stretches_true_centered = stretches_true_mapped - stretches_true_mapped.mean()
+        
+        shift_corr = np.corrcoef(shifts_pred_centered, shifts_true_centered)[0, 1]
+        stretch_corr = np.corrcoef(stretches_pred_centered, stretches_true_centered)[0, 1]
+        mean_shift_error = np.mean(np.abs(shifts_pred_centered - shifts_true_centered))
+        
     # Calculate the fully aligned (unshifted) reconstructed tensor
     X_aligned = np.einsum('ir,jr,kr->ijk', A_pred_ordered, B_pred_ordered, C_pred_ordered)
     
@@ -176,7 +234,8 @@ def evaluate_chroma_alignment(model, dataset):
         'a_similarities': a_sims,
         'shift_correlation': shift_corr,
         'stretch_correlation': stretch_corr,
-        'mean_shift_error': mean_shift_error
+        'mean_shift_error': mean_shift_error,
+        'mean_coordinate_error': mean_coord_mae
     }
     
     print("\n--- Chroma-PETN Model Recovery Evaluation ---")
@@ -187,9 +246,13 @@ def evaluate_chroma_alignment(model, dataset):
         print(f"  Concentration score similarity:    {a_sims[r]:.4f}")
         
     print("\n--- Shift & Alignment Recovery ---")
-    print(f"  Shift parameter correlation:  {shift_corr:.4f}")
-    print(f"  Stretch parameter correlation: {stretch_corr:.4f}")
-    print(f"  Mean absolute shift error:    {mean_shift_error:.4f} (normalized time units)")
+    if model.warp_type == 'linear':
+        print(f"  Shift parameter correlation:  {shift_corr:.4f}")
+        print(f"  Stretch parameter correlation: {stretch_corr:.4f}")
+        print(f"  Mean absolute shift error:    {mean_shift_error:.4f} (normalized time units)")
+    else:
+        print(f"  Warp Model:                   {model.warp_type}")
+        print(f"  Mean absolute coordinate error: {mean_coord_mae:.4f} (normalized time units)")
     
     # Generate and save comparison plots in notebooks/chroma/
     import os
@@ -217,11 +280,14 @@ def evaluate_chroma_alignment(model, dataset):
         save_path='notebooks/chroma/chroma_alignment_comparison.png'
     )
     
-    # 3. Warp parameters recovery plot
-    plot_chroma_warp_parameters(
-        shifts_true_centered, stretches_true_centered, shifts_pred_centered, stretches_pred_centered,
-        save_path='notebooks/chroma/chroma_warp_parameters.png'
-    )
+    # 3. Warp parameters recovery plot (only for linear warp model)
+    if model.warp_type == 'linear':
+        plot_chroma_warp_parameters(
+            shifts_true_centered, stretches_true_centered, shifts_pred_centered, stretches_pred_centered,
+            save_path='notebooks/chroma/chroma_warp_parameters.png'
+        )
+    else:
+        print("  Warp parameter plotting skipped for non-linear warp models.")
     
     return metrics
 
@@ -230,5 +296,6 @@ if __name__ == "__main__":
     generator = ChromatographicDataGenerator(num_samples=15, num_time=100, num_spec=80, num_components=3)
     dataset = generator.generate_dataset(noise_std=0.015, max_shift=0.05, max_stretch=0.08)
     
+    # Run with default linear warp
     model = train_chroma_petn(dataset, epochs=1200, lr=0.01)
     evaluate_chroma_alignment(model, dataset)

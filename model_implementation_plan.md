@@ -55,12 +55,14 @@ This implementation plan is structured as an agile development backlog. It track
   * [x] Coded unit and integration tests in `tests/chroma/` (all passing cleanly).
   * [x] Added visual reporting in [train.py](./src/chroma/train.py) that saves resolved profiles, TIC alignment comparisons, and parameter correlations to `notebooks/chroma/`.
 
-### Phase B2: Non-Linear Warping (Splines & Quadratic Upgrade) | 🎯 NEXT MILESTONE
+### Phase B2: Non-Linear Warping (Splines & Quadratic Upgrade) | ✅ COMPLETED
 * **Goal:** Handle non-linear elution shifting common in gradient HPLC runs.
 * **Tasks:**
-  * Upgrade the warping head to support **quadratic warping** ($\Delta_i(t) = \alpha_i t^2 + \beta_i t + \gamma_i$).
-  * Implement **piecewise linear spline warping** defined by $M$ control points per sample, ensuring monotonicity by enforcing positive derivative increments between control points.
-  * Add unit tests verifying warping monotonicity on non-linear shifts.
+  * [x] Upgraded the warping head in [model.py](./src/chroma/model.py) to support **quadratic warping** ($\Delta_i(t) = \alpha_i t^2 + \beta_i t + \gamma_i$) and **uniform piecewise linear spline warping** (defined by $M$ control points).
+  * [x] Enforced strict monotonicity on both quadratic warping (via parameter boundaries) and spline warping (via parameterized log-increments $\theta_{i,k}$).
+  * [x] Added unit tests verifying monotonicity, constraint projections, and forward passes in [test_model.py](./tests/chroma/test_model.py) (all passing cleanly).
+  * [ ] **Future Refinement (Step B2.1): Physics-Informed M** (Backlog)
+    * Support non-uniform control point placement based on the mobile phase gradient or temperature ramp profiles from instrument method files to prevent overfitting.
 
 ### Phase B3: Real-World Chromatographic Validation | 📋 BACKLOG
 * **Goal:** Ingest and align real instrument runs (HPLC-DAD or GC-MS).

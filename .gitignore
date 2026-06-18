@@ -16,7 +16,11 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Data (Ignore actual data files, keep raw directory structure)
+# Data and temporary outputs
+data/chroma/
+notebooks/chroma/results/
+scratch/
+
 data/**/*.mat
 data/**/*.zip
 data/Amino_Acid_fluo.zip
