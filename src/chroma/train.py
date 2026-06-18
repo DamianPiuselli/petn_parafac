@@ -10,7 +10,7 @@ import numpy as np
 from src.chroma.model import ChromaPETN
 from src.chroma.generator import ChromatographicDataGenerator
 
-def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_type='linear', num_segments=4):
+def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_type='linear', num_segments=4, tol=1e-6, patience=50):
     """
     Trains the Chroma-PETN model on the provided dataset.
     
@@ -21,6 +21,8 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
         warp_reg_coef: Weight for warp parameter regularization
         warp_type: Warping model type ('linear', 'quadratic', 'spline')
         num_segments: Number of uniform segments for spline warp type
+        tol: Tolerance for relative change in MSE loss to define convergence
+        patience: Number of epochs to wait for improvement before early stopping
         
     Returns:
         model: Trained ChromaPETN model instance
@@ -42,7 +44,10 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
     y_target = X[coords_i, coords_j, coords_k]
     
     print(f"Training Chroma-PETN model ({warp_type} warp) for {epochs} epochs...")
-    for epoch in range(epoch_val := (epochs + 1)):
+    best_loss = float('inf')
+    patience_counter = 0
+    
+    for epoch in range(epochs + 1):
         optimizer.zero_grad()
         
         # Forward pass
@@ -61,15 +66,34 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
         
         # Total loss
         loss = loss_mse + loss_warp_reg
-        
         loss.backward()
         optimizer.step()
         
         # Apply physical constraints (non-negativity clipping and warp centering)
         model.project_constraints()
         
+        # Check convergence & early stopping
+        loss_val = loss_mse.item()
+        if loss_val < 1e-7:
+            print(f"Convergence reached at epoch {epoch:4d} (MSE Loss < 1e-7). Final MSE: {loss_val:.6f}")
+            break
+            
+        if epoch > 0:
+            change = (best_loss - loss_val) / (best_loss + 1e-10)
+            if change > tol:
+                best_loss = loss_val
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                
+            if patience_counter >= patience:
+                print(f"Early stopping at epoch {epoch:4d} (MSE did not decrease significantly for {patience} epochs). Final MSE: {loss_val:.6f}")
+                break
+        else:
+            best_loss = loss_val
+            
         if epoch % 300 == 0:
-            print(f"Epoch {epoch:4d} | MSE Loss: {loss_mse.item():.6f} | Warp Reg: {loss_warp_reg.item():.6f}")
+            print(f"Epoch {epoch:4d} | MSE Loss: {loss_val:.6f} | Warp Reg: {loss_warp_reg.item():.6f}")
             
     return model
 

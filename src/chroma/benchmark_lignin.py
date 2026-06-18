@@ -87,11 +87,20 @@ def match_and_align_profiles(A_pred, C_pred, A_true, C_true, B_pred=None):
         res['b_ordered'] = B_pred_ordered
     return res
 
-def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coef=0.001, warp_type='linear', num_segments=4):
+def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coef=0.001, warp_type='linear', num_segments=4, derivative_order=0, sg_window_size=11, batch_size=50000, tol=1e-6, patience=50):
     X_tensor = torch.tensor(X, dtype=torch.float32)
     I, J, K = X_tensor.shape
     
-    model = ChromaPETN(num_samples=I, num_time=J, num_spec=K, num_components=num_components, warp_type=warp_type, num_segments=num_segments)
+    model = ChromaPETN(
+        num_samples=I, 
+        num_time=J, 
+        num_spec=K, 
+        num_components=num_components, 
+        warp_type=warp_type, 
+        num_segments=num_segments,
+        derivative_order=derivative_order,
+        sg_window_size=sg_window_size
+    )
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     
     coords_i, coords_j, coords_k = torch.meshgrid(
@@ -100,13 +109,38 @@ def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coe
     coords_i = coords_i.flatten()
     coords_j = coords_j.flatten()
     coords_k = coords_k.flatten()
-    y_target = X_tensor[coords_i, coords_j, coords_k]
+    
+    if derivative_order > 0:
+        from scipy.signal import savgol_filter
+        X_deriv = savgol_filter(X, window_length=sg_window_size, polyorder=2, deriv=derivative_order, axis=1)
+        y_target = torch.tensor(X_deriv, dtype=torch.float32)[coords_i, coords_j, coords_k]
+    else:
+        y_target = X_tensor[coords_i, coords_j, coords_k]
+        
+    num_coords = coords_i.shape[0]
+    best_loss = float('inf')
+    patience_counter = 0
     
     for epoch in range(epochs):
         optimizer.zero_grad()
-        y_pred = model(coords_i, coords_j, coords_k)
-        loss_mse = torch.nn.functional.mse_loss(y_pred, y_target)
         
+        # Accumulate MSE loss and backprop in chunks to save memory
+        loss_mse_val = 0.0
+        for start_idx in range(0, num_coords, batch_size):
+            end_idx = min(start_idx + batch_size, num_coords)
+            batch_i = coords_i[start_idx:end_idx]
+            batch_j = coords_j[start_idx:end_idx]
+            batch_k = coords_k[start_idx:end_idx]
+            
+            batch_y_pred = model(batch_i, batch_j, batch_k)
+            batch_y_target = y_target[start_idx:end_idx]
+            
+            # Scale loss by batch fraction
+            batch_loss = torch.nn.functional.mse_loss(batch_y_pred, batch_y_target) * (len(batch_i) / num_coords)
+            batch_loss.backward()
+            loss_mse_val += batch_loss.item()
+            
+        # Add regularization loss and backward
         if model.warp_type == 'linear':
             loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_stretch**2) + torch.mean(model.warp_shift**2))
         elif model.warp_type == 'quadratic':
@@ -114,13 +148,31 @@ def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coe
         elif model.warp_type == 'spline':
             loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_shift**2) + torch.mean(model.warp_log_increments**2))
             
-        loss = loss_mse + loss_warp_reg
-        loss.backward()
+        loss_warp_reg.backward()
         optimizer.step()
         model.project_constraints()
         
+        # Convergence and early stopping checks
+        if loss_mse_val < 1e-7:
+            print(f"Convergence reached at epoch {epoch:4d} (MSE Loss < 1e-7). Final MSE: {loss_mse_val:.6f}")
+            break
+            
+        if epoch > 0:
+            change = (best_loss - loss_mse_val) / (best_loss + 1e-10)
+            if change > tol:
+                best_loss = loss_mse_val
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                
+            if patience_counter >= patience:
+                print(f"Early stopping at epoch {epoch:4d} (MSE did not decrease significantly for {patience} epochs). Final MSE: {loss_mse_val:.6f}")
+                break
+        else:
+            best_loss = loss_mse_val
+            
         if (epoch + 1) % 200 == 0:
-            print(f"    Epoch {epoch+1:4d}/{epochs} | MSE Loss: {loss_mse.item():.6f} | Reg: {loss_warp_reg.item():.6f}")
+            print(f"    Epoch {epoch+1:4d}/{epochs} | MSE Loss: {loss_mse_val:.6f} | Reg: {loss_warp_reg.item():.6f}")
             
     return model
 
@@ -195,7 +247,7 @@ def main():
     
     print("  Fitting Chroma-PETN (Linear)...")
     torch.manual_seed(42)
-    petn_lin = train_chroma_petn_fast(X_lignin_norm, num_components=13, warp_type='linear', epochs=800)
+    petn_lin = train_chroma_petn_fast(X_lignin_norm, num_components=13, warp_type='linear', epochs=800, derivative_order=2, sg_window_size=15)
     A_petn_lin = petn_lin.sample_embeddings.weight.detach().cpu().numpy()
     B_petn_lin = petn_lin.time_embeddings.weight.detach().cpu().numpy()
     C_petn_lin = petn_lin.spec_embeddings.weight.detach().cpu().numpy()
@@ -203,7 +255,7 @@ def main():
     
     print("  Fitting Chroma-PETN (Spline)...")
     torch.manual_seed(42)
-    petn_spl = train_chroma_petn_fast(X_lignin_norm, num_components=13, warp_type='spline', num_segments=4, epochs=800)
+    petn_spl = train_chroma_petn_fast(X_lignin_norm, num_components=13, warp_type='spline', num_segments=4, epochs=800, derivative_order=2, sg_window_size=15)
     A_petn_spl = petn_spl.sample_embeddings.weight.detach().cpu().numpy()
     B_petn_spl = petn_spl.time_embeddings.weight.detach().cpu().numpy()
     C_petn_spl = petn_spl.spec_embeddings.weight.detach().cpu().numpy()

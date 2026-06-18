@@ -11,7 +11,7 @@ class ChromaPETN(nn.Module):
     Physics-Embedded Tensor Network for Chromatographic Alignment (Chroma-PETN).
     Models the trilinear PARAFAC core with a differentiable coordinate warping layer.
     """
-    def __init__(self, num_samples, num_time, num_spec, num_components=3, warp_type='linear', num_segments=4):
+    def __init__(self, num_samples, num_time, num_spec, num_components=3, warp_type='linear', num_segments=4, derivative_order=0, sg_window_size=11, sg_polyorder=2):
         super().__init__()
         self.num_samples = num_samples
         self.num_time = num_time
@@ -19,6 +19,9 @@ class ChromaPETN(nn.Module):
         self.num_components = num_components
         self.warp_type = warp_type
         self.num_segments = num_segments
+        self.derivative_order = derivative_order
+        self.sg_window_size = sg_window_size
+        self.sg_polyorder = sg_polyorder
         
         # Validate warp type
         if warp_type not in ['linear', 'quadratic', 'spline']:
@@ -43,6 +46,19 @@ class ChromaPETN(nn.Module):
             # piecewise linear spline: shift at start + log-increments per segment
             self.warp_shift = nn.Parameter(torch.zeros(num_samples))
             self.warp_log_increments = nn.Parameter(torch.zeros(num_samples, num_segments))
+            
+        # 3. Register Savitzky-Golay coefficients buffer
+        if self.derivative_order > 0:
+            if self.sg_window_size is None:
+                raise ValueError("sg_window_size must be specified if derivative_order > 0")
+            if self.sg_window_size % 2 == 0:
+                raise ValueError("sg_window_size must be odd")
+            if self.sg_polyorder >= self.sg_window_size:
+                raise ValueError("sg_polyorder must be less than sg_window_size")
+                
+            from scipy.signal import savgol_coeffs
+            coeffs = savgol_coeffs(self.sg_window_size, self.sg_polyorder, deriv=self.derivative_order)
+            self.register_buffer('sg_kernel', torch.tensor(coeffs, dtype=torch.float32).view(1, 1, -1))
             
         self.reset_parameters()
 
@@ -99,6 +115,12 @@ class ChromaPETN(nn.Module):
         Returns:
             y_pred: Predicted observed intensities of shape (BatchSize,)
         """
+        if self.derivative_order == 0:
+            return self._forward_raw(sample_idx, time_idx, spec_idx)
+        else:
+            return self._forward_derivative(sample_idx, time_idx, spec_idx)
+
+    def _forward_raw(self, sample_idx, time_idx, spec_idx):
         # 1. Lookup scores and spectra
         a = self.sample_embeddings(sample_idx) # Shape: (BatchSize, num_components)
         c = self.spec_embeddings(spec_idx)     # Shape: (BatchSize, num_components)
@@ -166,3 +188,35 @@ class ChromaPETN(nn.Module):
         # 4. Reconstruct intensity: y_pred = sum_r a_ir * b_warped_r * c_kr
         y_pred = torch.sum(a * b_warped * c, dim=1)
         return y_pred
+
+    def _forward_derivative(self, sample_idx, time_idx, spec_idx):
+        m = self.sg_window_size // 2
+        W = self.sg_window_size
+        
+        # Build windowed offsets: shape (W,)
+        offsets = torch.arange(-m, m + 1, device=time_idx.device)
+        
+        # Compute windowed time indices: shape (BatchSize, W)
+        time_window = time_idx.unsqueeze(-1) + offsets
+        time_window_clamped = torch.clamp(time_window, 0, self.num_time - 1)
+        
+        # Expand sample and spec indices: shape (BatchSize, W)
+        sample_window = sample_idx.unsqueeze(-1).expand(-1, W)
+        spec_window = spec_idx.unsqueeze(-1).expand(-1, W)
+        
+        # Flatten to shape (BatchSize * W)
+        sample_flat = sample_window.flatten()
+        time_flat = time_window_clamped.flatten()
+        spec_flat = spec_window.flatten()
+        
+        # Run standard raw forward pass on flat indices
+        y_raw_flat = self._forward_raw(sample_flat, time_flat, spec_flat)
+        
+        # Reshape back to (BatchSize, 1, W)
+        y_raw_window = y_raw_flat.view(-1, 1, W)
+        
+        # Apply 1D Savitzky-Golay convolution
+        y_deriv = torch.nn.functional.conv1d(y_raw_window, self.sg_kernel, padding=0)
+        
+        # Squeeze to shape (BatchSize,)
+        return y_deriv.view(-1)
