@@ -24,3 +24,12 @@ def test_chroma_generator_dataset():
     assert np.all(dataset['A'] >= 0)
     assert np.all(dataset['B'] >= 0)
     assert np.all(dataset['C'] >= 0)
+
+def test_chroma_generator_different_components():
+    gen = ChromatographicDataGenerator(num_samples=5, num_time=40, num_spec=30, num_components=5, seed=123)
+    dataset = gen.generate_dataset(noise_std=0.01)
+    assert dataset['X'].shape == (5, 40, 30)
+    assert dataset['A'].shape == (5, 5)
+    assert dataset['B'].shape == (40, 5)
+    assert dataset['C'].shape == (30, 5)
+

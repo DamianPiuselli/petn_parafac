@@ -21,12 +21,20 @@ class ChromatographicDataGenerator:
         self.spec_grid = np.linspace(200.0, 400.0, num_spec)
         
         # Ground truth peak parameters (Gaussian chromatography profiles)
-        self.true_peak_centers = [0.3, 0.5, 0.7]
-        self.true_peak_widths = [0.05, 0.06, 0.08]
-        
-        # Ground truth spectral parameters (Gaussian-like spectra)
-        self.true_spec_centers = [250.0, 300.0, 350.0]
-        self.true_spec_widths = [20.0, 25.0, 30.0]
+        if num_components == 3:
+            self.true_peak_centers = [0.3, 0.5, 0.7]
+            self.true_peak_widths = [0.05, 0.06, 0.08]
+            
+            # Ground truth spectral parameters (Gaussian-like spectra)
+            self.true_spec_centers = [250.0, 300.0, 350.0]
+            self.true_spec_widths = [20.0, 25.0, 30.0]
+        else:
+            # Dynamically distribute component parameters evenly
+            self.true_peak_centers = list(np.linspace(0.2, 0.8, num_components))
+            self.true_peak_widths = [0.05 + 0.01 * r for r in range(num_components)]
+            
+            self.true_spec_centers = list(np.linspace(220.0, 380.0, num_components))
+            self.true_spec_widths = [15.0 + 5.0 * r for r in range(num_components)]
 
     def generate_profiles(self):
         """

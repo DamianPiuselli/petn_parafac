@@ -86,97 +86,23 @@ def match_and_align_profiles(A_pred, C_pred, A_true, C_true, B_pred=None):
         res['b_ordered'] = B_pred_ordered
     return res
 
+from src.chroma.train import train_chroma_petn
+
 def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coef=0.001, warp_type='linear', num_segments=4, derivative_order=0, sg_window_size=11, batch_size=50000, tol=1e-6, patience=50):
-    X_tensor = torch.tensor(X, dtype=torch.float32)
-    I, J, K = X_tensor.shape
-    
-    model = ChromaPETN(
-        num_samples=I, 
-        num_time=J, 
-        num_spec=K, 
-        num_components=num_components, 
-        warp_type=warp_type, 
+    return train_chroma_petn(
+        dataset=X,
+        epochs=epochs,
+        lr=lr,
+        warp_reg_coef=warp_reg_coef,
+        warp_type=warp_type,
         num_segments=num_segments,
+        tol=tol,
+        patience=patience,
+        num_components=num_components,
         derivative_order=derivative_order,
-        sg_window_size=sg_window_size
+        sg_window_size=sg_window_size,
+        batch_size=batch_size
     )
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    
-    coords_i, coords_j, coords_k = torch.meshgrid(
-        torch.arange(I), torch.arange(J), torch.arange(K), indexing='ij'
-    )
-    coords_i = coords_i.flatten()
-    coords_j = coords_j.flatten()
-    coords_k = coords_k.flatten()
-    
-    if derivative_order > 0:
-        from scipy.signal import savgol_filter
-        X_deriv = savgol_filter(X, window_length=sg_window_size, polyorder=2, deriv=derivative_order, axis=1)
-        y_target = torch.tensor(X_deriv, dtype=torch.float32)[coords_i, coords_j, coords_k]
-    else:
-        y_target = X_tensor[coords_i, coords_j, coords_k]
-        
-    y_target_var = torch.var(y_target).item()
-    num_coords = coords_i.shape[0]
-    best_loss = float('inf')
-    patience_counter = 0
-    
-    for epoch in range(epochs):
-        optimizer.zero_grad()
-        
-        # Accumulate MSE loss in chunks to save memory
-        loss_mse_val = 0.0
-        for start_idx in range(0, num_coords, batch_size):
-            end_idx = min(start_idx + batch_size, num_coords)
-            batch_i = coords_i[start_idx:end_idx]
-            batch_j = coords_j[start_idx:end_idx]
-            batch_k = coords_k[start_idx:end_idx]
-            
-            batch_y_pred = model(batch_i, batch_j, batch_k)
-            batch_y_target = y_target[start_idx:end_idx]
-            
-            batch_loss = torch.nn.functional.mse_loss(batch_y_pred, batch_y_target) * (len(batch_i) / num_coords)
-            batch_loss.backward()
-            loss_mse_val += batch_loss.item()
-            
-        # Add regularization loss and backward
-        if model.warp_type == 'linear':
-            loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_stretch**2) + torch.mean(model.warp_shift**2))
-        elif model.warp_type == 'quadratic':
-            loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_alpha**2) + torch.mean(model.warp_beta**2) + torch.mean(model.warp_gamma**2))
-        elif model.warp_type == 'spline':
-            loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_shift**2) + torch.mean(model.warp_log_increments**2))
-            
-        loss_warp_reg.backward()
-        optimizer.step()
-        model.project_constraints()
-        
-        # Convergence and early stopping checks
-        if loss_mse_val < 1e-7 or loss_mse_val < 1e-5 * y_target_var:
-            print(f"Convergence reached at epoch {epoch:4d} (MSE Loss < target threshold). Final MSE: {loss_mse_val:.3e}")
-            break
-            
-        if epoch > 0:
-            change_abs = best_loss - loss_mse_val
-            change_rel = change_abs / (best_loss + 1e-10)
-            
-            # To qualify as improvement, it must exceed both absolute and relative deltas
-            if change_rel > tol and change_abs > tol * y_target_var:
-                best_loss = loss_mse_val
-                patience_counter = 0
-            else:
-                patience_counter += 1
-                
-            if patience_counter >= patience:
-                print(f"Early stopping at epoch {epoch:4d} (MSE did not decrease significantly for {patience} epochs). Final MSE: {loss_mse_val:.3e}")
-                break
-        else:
-            best_loss = loss_mse_val
-        
-        if (epoch + 1) % 200 == 0:
-            print(f"    Epoch {epoch+1:4d}/{epochs} | MSE Loss: {loss_mse_val:.3e} | Reg: {loss_warp_reg.item():.3e}")
-            
-    return model
 
 def main():
     print("==================================================")
