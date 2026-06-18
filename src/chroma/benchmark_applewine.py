@@ -116,6 +116,7 @@ def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coe
     else:
         y_target = X_tensor[coords_i, coords_j, coords_k]
         
+    y_target_var = torch.var(y_target).item()
     num_coords = coords_i.shape[0]
     best_loss = float('inf')
     patience_counter = 0
@@ -151,26 +152,29 @@ def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coe
         model.project_constraints()
         
         # Convergence and early stopping checks
-        if loss_mse_val < 1e-7:
-            print(f"Convergence reached at epoch {epoch:4d} (MSE Loss < 1e-7). Final MSE: {loss_mse_val:.6f}")
+        if loss_mse_val < 1e-7 or loss_mse_val < 1e-5 * y_target_var:
+            print(f"Convergence reached at epoch {epoch:4d} (MSE Loss < target threshold). Final MSE: {loss_mse_val:.3e}")
             break
             
         if epoch > 0:
-            change = (best_loss - loss_mse_val) / (best_loss + 1e-10)
-            if change > tol:
+            change_abs = best_loss - loss_mse_val
+            change_rel = change_abs / (best_loss + 1e-10)
+            
+            # To qualify as improvement, it must exceed both absolute and relative deltas
+            if change_rel > tol and change_abs > tol * y_target_var:
                 best_loss = loss_mse_val
                 patience_counter = 0
             else:
                 patience_counter += 1
                 
             if patience_counter >= patience:
-                print(f"Early stopping at epoch {epoch:4d} (MSE did not decrease significantly for {patience} epochs). Final MSE: {loss_mse_val:.6f}")
+                print(f"Early stopping at epoch {epoch:4d} (MSE did not decrease significantly for {patience} epochs). Final MSE: {loss_mse_val:.3e}")
                 break
         else:
             best_loss = loss_mse_val
         
         if (epoch + 1) % 200 == 0:
-            print(f"    Epoch {epoch+1:4d}/{epochs} | MSE Loss: {loss_mse_val:.6f} | Reg: {loss_warp_reg.item():.6f}")
+            print(f"    Epoch {epoch+1:4d}/{epochs} | MSE Loss: {loss_mse_val:.3e} | Reg: {loss_warp_reg.item():.3e}")
             
     return model
 

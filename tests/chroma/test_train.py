@@ -23,3 +23,17 @@ def test_chroma_training_integration():
     assert len(metrics['a_similarities']) == 3
     assert metrics['shift_correlation'] is not None
     assert metrics['mean_shift_error'] >= 0.0
+
+def test_chroma_early_stopping(capsys):
+    # Generate a tiny dataset
+    gen = ChromatographicDataGenerator(num_samples=4, num_time=20, num_spec=15, num_components=3, seed=123)
+    dataset = gen.generate_dataset(noise_std=0.01, max_shift=0.02, max_stretch=0.03)
+    
+    # Train with tol=1.0 (unachievably high threshold for improvement) and patience=2
+    # It should stop early at epoch 2
+    model = train_chroma_petn(dataset, epochs=50, lr=0.01, tol=1.0, patience=2)
+    
+    captured = capsys.readouterr()
+    assert "Early stopping at epoch    2" in captured.out
+
+

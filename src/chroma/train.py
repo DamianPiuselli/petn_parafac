@@ -43,6 +43,8 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
     coords_k = coords_k.flatten()
     y_target = X[coords_i, coords_j, coords_k]
     
+    y_target_var = torch.var(y_target).item()
+    
     print(f"Training Chroma-PETN model ({warp_type} warp) for {epochs} epochs...")
     best_loss = float('inf')
     patience_counter = 0
@@ -74,26 +76,29 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
         
         # Check convergence & early stopping
         loss_val = loss_mse.item()
-        if loss_val < 1e-7:
-            print(f"Convergence reached at epoch {epoch:4d} (MSE Loss < 1e-7). Final MSE: {loss_val:.6f}")
+        if loss_val < 1e-7 or loss_val < 1e-5 * y_target_var:
+            print(f"Convergence reached at epoch {epoch:4d} (MSE Loss < target threshold). Final MSE: {loss_val:.3e}")
             break
             
         if epoch > 0:
-            change = (best_loss - loss_val) / (best_loss + 1e-10)
-            if change > tol:
+            change_abs = best_loss - loss_val
+            change_rel = change_abs / (best_loss + 1e-10)
+            
+            # To qualify as improvement, it must exceed both absolute and relative deltas
+            if change_rel > tol and change_abs > tol * y_target_var:
                 best_loss = loss_val
                 patience_counter = 0
             else:
                 patience_counter += 1
                 
             if patience_counter >= patience:
-                print(f"Early stopping at epoch {epoch:4d} (MSE did not decrease significantly for {patience} epochs). Final MSE: {loss_val:.6f}")
+                print(f"Early stopping at epoch {epoch:4d} (MSE did not decrease significantly for {patience} epochs). Final MSE: {loss_val:.3e}")
                 break
         else:
             best_loss = loss_val
             
         if epoch % 300 == 0:
-            print(f"Epoch {epoch:4d} | MSE Loss: {loss_val:.6f} | Warp Reg: {loss_warp_reg.item():.6f}")
+            print(f"Epoch {epoch:4d} | MSE Loss: {loss_val:.3e} | Warp Reg: {loss_warp_reg.item():.3e}")
             
     return model
 
