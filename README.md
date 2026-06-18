@@ -19,9 +19,11 @@ The library is organized into two self-contained subpackages targeting distinct 
 ### 2. Chromatography with Retention Time Shifting (`src/chroma/`)
 * **Physical Target:** Resolves non-trilinearity in GC-MS or HPLC-DAD datasets caused by column flow rate drift, temperature fluctuations, and injection delay shifts.
 * **Architecture Highlights:**
-  * **Differentiable Warping Head:** Parameterizes sample-specific time stretching ($\alpha_i$) and shifting ($\beta_i$) coefficients.
+  * **Differentiable Warping Head:** Parameterizes sample-specific time stretching ($\alpha_i$) and shifting ($\beta_i$) coefficients (supporting linear, quadratic, and spline warping functions).
   * **Differentiable 1D Interpolation:** Natively queries a common/aligned chromatography profile embedding ($B$) at warped continuous coordinates.
+  * **Differentiable Savitzky-Golay Derivative Layer:** Implements a convolutional layer using Savitzky-Golay filters to compute analytical derivatives (e.g. second derivatives) on the fly during training, resolving severe peak overlaps and background drifts.
   * **Mean-Centering Constraint:** Resolves translation/scaling degeneracy by forcing the learned warping parameters to average to zero, anchoring the canonical profile coordinates.
+  * **Variance-Scaled Early Stopping:** Scales the minimum convergence delta dynamically based on the target signal variance ($y_{\text{target}}$ variance) to ensure scale-invariant training convergence.
 * **Documentation:** Detailed guide available at [src/chroma/README.md](./src/chroma/README.md).
 
 ---
