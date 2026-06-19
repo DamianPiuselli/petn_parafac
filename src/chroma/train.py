@@ -13,7 +13,8 @@ from src.chroma.generator import ChromatographicDataGenerator
 def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_type='linear',
                       num_segments=4, tol=1e-6, patience=50, num_components=3,
                       derivative_order=0, sg_window_size=11, sg_polyorder=2, batch_size=None,
-                      compile_model=False):
+                      compile_model=True):
+
     """
     Trains the Chroma-PETN model on the provided dataset.
     
