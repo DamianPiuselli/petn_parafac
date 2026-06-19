@@ -16,21 +16,33 @@ class CatchRedirect(urllib.request.HTTPRedirectHandler):
         raise RedirectException(newurl)
 
 def get_redirect_url(url):
-    print("Getting redirect URL from ERDA...")
+    print("Getting redirect URL...")
+    # First: Try direct connection
     opener = urllib.request.build_opener(CatchRedirect())
-    opener.add_handler(urllib.request.ProxyHandler({
-        'http': 'http://proxy.cnea.gob.ar:1280',
-        'https': 'http://proxy.cnea.gob.ar:1280'
-    }))
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         opener.open(req)
         return url
     except RedirectException as e:
         return e.url
-    except Exception as e:
-        print(f"Error getting redirect URL: {e}")
-        return None
+    except Exception as e_direct:
+        print(f"Direct connection failed to get redirect URL: {e_direct}")
+        # Second: Try local proxy fallback
+        print("Retrying with local proxy...")
+        opener_proxy = urllib.request.build_opener(CatchRedirect())
+        opener_proxy.add_handler(urllib.request.ProxyHandler({
+            'http': 'http://proxy.cnea.gob.ar:1280',
+            'https': 'http://proxy.cnea.gob.ar:1280'
+        }))
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            opener_proxy.open(req)
+            return url
+        except RedirectException as e:
+            return e.url
+        except Exception as e_proxy:
+            print(f"Proxy connection failed to get redirect URL: {e_proxy}")
+            return None
 
 def fetch_proxy_list():
     print("Fetching public proxy list from GitHub...")
@@ -40,22 +52,41 @@ def fetch_proxy_list():
     ]
     proxies = []
     
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({
+    # Direct opener (without proxy)
+    opener_direct = urllib.request.build_opener()
+    
+    # Proxy opener fallback
+    opener_proxy = urllib.request.build_opener(urllib.request.ProxyHandler({
         'http': 'http://proxy.cnea.gob.ar:1280',
         'https': 'http://proxy.cnea.gob.ar:1280'
     }))
     
     for url in proxy_urls:
+        success = False
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with opener.open(req, timeout=10) as resp:
+            with opener_direct.open(req, timeout=10) as resp:
                 content = resp.read().decode('utf-8')
                 for line in content.splitlines():
                     line = line.strip()
                     if line and line.endswith(":443"):
                         proxies.append(line)
-        except Exception as e:
-            print(f"Error fetching proxy list from {url}: {e}")
+            success = True
+        except Exception as e_direct:
+            print(f"Direct fetch of proxy list from {url} failed: {e_direct}")
+            
+        if not success:
+            try:
+                print("Retrying proxy list fetch with local proxy...")
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with opener_proxy.open(req, timeout=10) as resp:
+                    content = resp.read().decode('utf-8')
+                    for line in content.splitlines():
+                        line = line.strip()
+                        if line and line.endswith(":443"):
+                            proxies.append(line)
+            except Exception as e_proxy:
+                print(f"Proxy fetch of proxy list from {url} failed: {e_proxy}")
             
     proxies = list(set(proxies))
     print(f"Found {len(proxies)} unique public proxies on port 443.")
@@ -114,11 +145,107 @@ def test_proxy_chain_to_target(local_host, local_port, pub_host, pub_port, targe
     except Exception:
         return False
 
+def download_direct(url, dest_path, expected_size=None):
+    """
+    Attempts to download a URL directly using urllib.
+    Supports progress reporting, redirects, and resumption.
+    Returns True if successful, False otherwise.
+    """
+    print(f"Attempting direct download of {url}...")
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    downloaded_size = 0
+    if os.path.exists(dest_path):
+        downloaded_size = os.path.getsize(dest_path)
+        
+    if expected_size and downloaded_size >= expected_size:
+        print(f"File is already fully downloaded ({downloaded_size} bytes).")
+        return True
+            
+    if downloaded_size > 0:
+        headers['Range'] = f"bytes={downloaded_size}-"
+        print(f"Resuming download from byte {downloaded_size}...")
+        
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            status = response.status
+            headers_info = response.info()
+            
+            content_type = headers_info.get('Content-Type', '')
+            if "text/html" in content_type.lower() or "text/plain" in content_type.lower():
+                print(f"Direct download warning: response has content-type {content_type}, might be a block page.")
+                
+            if status == 200:
+                mode = 'wb'
+                downloaded_size = 0
+            elif status == 206:
+                mode = 'ab'
+            else:
+                print(f"Direct download failed: server returned status {status}")
+                return False
+                
+            content_length = headers_info.get('Content-Length')
+            if content_length:
+                content_length = int(content_length)
+            else:
+                content_length = 0
+                
+            total_size = expected_size or (downloaded_size + content_length)
+            
+            block_size = 1024 * 64
+            with open(dest_path, mode) as f:
+                curr_downloaded = 0
+                while True:
+                    chunk = response.read(block_size)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    curr_downloaded += len(chunk)
+                    total_downloaded_so_far = downloaded_size + curr_downloaded
+                    
+                    if total_size:
+                        percent = total_downloaded_so_far * 100.0 / total_size
+                        sys.stdout.write(f"\rDownloading: {percent:3.1f}% [{total_downloaded_so_far}/{total_size} bytes]")
+                    else:
+                        sys.stdout.write(f"\rDownloading: [{total_downloaded_so_far} bytes]")
+                    sys.stdout.flush()
+            print()
+            return True
+    except Exception as e:
+        print(f"Direct download failed with error: {e}")
+        return False
+
+def extract_zip(zip_path, dest_dir):
+    print("Unpacking zip archive...")
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(dest_dir)
+        print(f"Extraction completed. Files saved to: {dest_dir}")
+        os.remove(zip_path)
+        print("Removed temporary zip archive.")
+    except Exception as e:
+        print(f"Error extracting zip archive: {e}")
+        sys.exit(1)
+
 def download_applewine():
     url = "https://sid.erda.dk/share_redirect/BktKBtSa9W/CDFS%20apple%20wine.zip"
     dest_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/chroma/applewine"))
     os.makedirs(dest_dir, exist_ok=True)
     zip_path = os.path.join(dest_dir, "CDFS_apple_wine.zip")
+
+    # Try direct download first
+    redirect_url = get_redirect_url(url)
+    if not redirect_url:
+        print("Failed to get redirect URL. Using original URL.")
+        redirect_url = url
+
+    if download_direct(redirect_url, zip_path, 726373424):
+        print("Direct download completed successfully!")
+        extract_zip(zip_path, dest_dir)
+        return
+    else:
+        print("Direct download failed. Falling back to proxy chaining tunnel...")
 
     local_host = "proxy.cnea.gob.ar"
     local_port = 1280
@@ -286,16 +413,7 @@ def download_applewine():
                 except:
                     pass
 
-    print("Unpacking zip archive...")
-    try:
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(dest_dir)
-        print(f"Extraction completed. Files saved to: {dest_dir}")
-        os.remove(zip_path)
-        print("Removed temporary zip archive.")
-    except Exception as e:
-        print(f"Error extracting zip archive: {e}")
-        sys.exit(1)
+    extract_zip(zip_path, dest_dir)
 
 if __name__ == "__main__":
     download_applewine()
