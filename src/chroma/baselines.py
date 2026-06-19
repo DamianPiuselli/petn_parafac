@@ -221,6 +221,22 @@ class COWPARAFAC:
         self.C_ = C
         return self
 
+def _fast_nnls(X, W, max_inner_iter=20):
+    """Solves min ||X - H W^T||_F^2 subject to H >= 0 using vectorized coordinate descent."""
+    N, K = X.shape
+    R = W.shape[1]
+    H = np.maximum(0.0, X @ W @ np.linalg.pinv(W.T @ W + 1e-9 * np.eye(R)))
+    A = W.T @ W
+    B = X @ W
+    for _ in range(max_inner_iter):
+        for r in range(R):
+            grad = B[:, r] - H @ A[:, r]
+            diag = A[r, r]
+            if diag > 1e-12:
+                H[:, r] = np.maximum(0.0, H[:, r] + grad / diag)
+    return H
+
+
 class MCRALS:
     """
     Multivariate Curve Resolution-Alternative Least Squares (MCR-ALS) Baseline.
@@ -252,18 +268,14 @@ class MCRALS:
         U, s, Vt = np.linalg.svd(D, full_matrices=False)
         S = np.abs(Vt[:R].T)
         
-        C = np.zeros((N, R))
-        
         # Alternating Least Squares Loop
         prev_err = float('inf')
         for iteration in range(self.max_iter):
             # Update C
-            for n in range(N):
-                C[n, :], _ = scipy.optimize.nnls(S, D[n, :])
+            C = _fast_nnls(D, S)
                 
             # Update S
-            for k in range(K):
-                S[k, :], _ = scipy.optimize.nnls(C, D[:, k])
+            S = _fast_nnls(D.T, C)
                 
             # Check convergence
             reconstruction = C @ S.T

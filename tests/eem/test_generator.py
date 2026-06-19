@@ -39,7 +39,8 @@ def test_generator_scores():
 def test_generator_dataset():
     """Verify that generated full EEM dataset matches expected shape and values."""
     gen = EEMGenerator(num_samples=10, num_ex=30, num_em=40, num_components=2)
-    data = gen.generate_dataset(noise_std=0.01)
+    data = gen.generate_dataset(noise_std=0.01, corrupt_ife=True)
+
     
     assert 'X' in data
     assert 'X_true' in data
@@ -87,4 +88,19 @@ def test_generator_dataset_corrupted():
     # Maximum value in X (with scattering) should be much higher than in clean X_true
     # because of high intensity scatter bands
     assert np.max(data['X']) > np.max(data['X_true'])
+
+
+def test_generator_arbitrary_components():
+    """Verify that EEMGenerator doesn't crash with >3 components."""
+    gen = EEMGenerator(num_samples=5, num_ex=20, num_em=30, num_components=5)
+    B, C = gen.generate_profiles()
+    assert B.shape == (20, 5)
+    assert C.shape == (30, 5)
+    
+    data = gen.generate_dataset(noise_std=0.01, corrupt_ife=True, corrupt_scatter=True)
+    assert data['A'].shape == (5, 5)
+    assert data['B'].shape == (20, 5)
+    assert data['C'].shape == (30, 5)
+    assert data['E'].shape == (20, 5)
+    assert data['M'].shape == (30, 5)
 

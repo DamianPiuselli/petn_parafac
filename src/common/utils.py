@@ -168,38 +168,74 @@ def plot_resolved_absorptivities(true_E, true_M, pred_E, pred_M, ex_wavelens, em
         plt.show()
     plt.close()
 
-def plot_chroma_resolved_vs_true_profiles(true_B, true_C, pred_B, pred_C, time_grid, spec_grid, save_path=None):
+def plot_chroma_resolved_vs_true_profiles(true_B, true_C, pred_B, pred_C, time_grid, spec_grid, component_names=None, plot_type='ms', save_path=None):
     """
-    Plots true vs. resolved chromatography profiles (B) and spectral profiles (C) side by side.
+    Plots chromatography profiles (B) on the left and spectral profiles (C) on the right.
+    Both B and C are plotted separately for each component.
+    
+    Args:
+        true_B: true chromatography profiles
+        true_C: true spectral profiles
+        pred_B: resolved chromatography profiles
+        pred_C: resolved spectral profiles
+        time_grid: array of time grid points
+        spec_grid: array of spectral channel points (m/z or wavelength)
+        component_names: list of component label strings
+        plot_type: 'ms' (mass spectrometry, vertical spikes) or 'dad' (diode array detector / UV-Vis, continuous curves)
+        save_path: path to save the generated figure
     """
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    num_components = true_B.shape[1]
+    num_components = pred_B.shape[1]
+    
+    fig, axes = plt.subplots(num_components, 2, figsize=(14, 3.2 * num_components))
+    if num_components == 1:
+        axes = np.expand_dims(axes, axis=0)
+        
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
     
-    # 1. Chromatography profiles
     for r in range(num_components):
-        label_true = f'True Peak {r+1}'
-        label_pred = f'Resolved Peak {r+1}'
-        axes[0].plot(time_grid, true_B[:, r], label=label_true, color=colors[r % len(colors)], linestyle='--', alpha=0.7)
-        axes[0].plot(time_grid, pred_B[:, r], label=label_pred, color=colors[r % len(colors)], linewidth=2)
-    axes[0].set_title('Chromatography Profiles (B)')
-    axes[0].set_xlabel('Time')
-    axes[0].set_ylabel('Normalized Intensity')
-    axes[0].grid(True, linestyle=':', alpha=0.6)
-    axes[0].legend()
-    
-    # 2. Spectral profiles
-    for r in range(num_components):
-        label_true = f'True Spec {r+1}'
-        label_pred = f'Resolved Spec {r+1}'
-        axes[1].plot(spec_grid, true_C[:, r], label=label_true, color=colors[r % len(colors)], linestyle='--', alpha=0.7)
-        axes[1].plot(spec_grid, pred_C[:, r], label=label_pred, color=colors[r % len(colors)], linewidth=2)
-    axes[1].set_title('Spectral Profiles (C)')
-    axes[1].set_xlabel('Spectral Channel')
-    axes[1].set_ylabel('Normalized Intensity')
-    axes[1].grid(True, linestyle=':', alpha=0.6)
-    axes[1].legend()
-    
+        color = colors[r % len(colors)]
+        comp_name = component_names[r] if component_names is not None else f'Component {r+1}'
+        
+        # 1. Chromatography profile (Left column)
+        ax_b = axes[r, 0]
+        if true_B is not None:
+            ax_b.plot(time_grid, true_B[:, r], label='True', color='gray', linestyle='--', alpha=0.7)
+        ax_b.plot(time_grid, pred_B[:, r], label='Resolved', color=color, linewidth=2)
+        
+        ax_b.set_title(f'{comp_name} - Chromatography Profile (B)')
+        ax_b.set_xlabel('Time')
+        ax_b.set_ylabel('Normalized Intensity')
+        ax_b.grid(True, linestyle=':', alpha=0.6)
+        ax_b.legend()
+        
+        # 2. Spectral profile (Right column)
+        ax_c = axes[r, 1]
+        
+        if plot_type == 'ms':
+            # Plot predicted spectra as discrete spikes (vlines)
+            ax_c.vlines(spec_grid, 0.0, pred_C[:, r], colors=color, linewidth=1.5, label='Resolved')
+            
+            # Plot true spectra (literature) if available as reference thin lines
+            if true_C is not None:
+                ax_c.vlines(spec_grid, 0.0, true_C[:, r], colors='gray', alpha=0.5, linewidth=1.0, label='Literature' if 'applewine' in str(save_path) else 'True')
+                
+            ax_c.set_title(f'{comp_name} - Mass Spectrum (C)')
+            ax_c.set_xlabel('m/z')
+            ax_c.set_ylabel('Relative Intensity')
+            ax_c.set_ylim(0.0, 1.1)
+        else:
+            # Plot predicted spectra as continuous curves
+            if true_C is not None:
+                ax_c.plot(spec_grid, true_C[:, r], label='True', color='gray', linestyle='--', alpha=0.7)
+            ax_c.plot(spec_grid, pred_C[:, r], label='Resolved', color=color, linewidth=2)
+            
+            ax_c.set_title(f'{comp_name} - Absorbance Spectrum (C)')
+            ax_c.set_xlabel('Wavelength (nm)')
+            ax_c.set_ylabel('Normalized Absorbance')
+            
+        ax_c.grid(True, linestyle=':', alpha=0.6)
+        ax_c.legend()
+        
     plt.tight_layout()
     if save_path:
         plt.savefig(save_path, dpi=300)
@@ -274,6 +310,84 @@ def plot_chroma_warp_parameters(true_shifts, true_stretches, pred_shifts, pred_s
     if save_path:
         plt.savefig(save_path, dpi=300)
         print(f"Warp parameters plot saved to {save_path}")
+    else:
+        plt.show()
+    plt.close()
+
+
+def plot_scores_parity(true_A, pred_A, num_calib=5, components_to_plot=None, component_names=None, save_path=None):
+    """
+    Calibrates the predicted scores using the first `num_calib` samples as standards,
+    and plots true vs. calibrated concentrations as a parity scatter plot with a 1:1 line.
+    
+    Args:
+        true_A: true score matrix of shape (I, R)
+        pred_A: predicted score matrix of shape (I, R)
+        num_calib: number of standard samples to fit calibration slope
+        components_to_plot: list of component indices to plot (0-indexed). 
+                             If None, plots all components.
+        component_names: list of string names for the components.
+    """
+    total_components = true_A.shape[1]
+    if components_to_plot is None:
+        components_to_plot = list(range(total_components))
+        
+    num_to_plot = len(components_to_plot)
+    fig, axes = plt.subplots(1, num_to_plot, figsize=(5 * num_to_plot, 4.5))
+    if num_to_plot == 1:
+        axes = [axes]
+        
+    for idx, r in enumerate(components_to_plot):
+        ax = axes[idx]
+        t_val = true_A[:, r]
+        p_val = pred_A[:, r]
+        
+        # 1. Fit calibration slope using the first `num_calib` samples as standards
+        # We solve: true = slope * pred (no intercept, assuming zero blank)
+        t_cal = t_val[:num_calib]
+        p_cal = p_val[:num_calib]
+        
+        slope = np.sum(t_cal * p_cal) / (np.sum(p_cal ** 2) + 1e-12)
+        
+        # Apply calibration to all samples
+        p_val_calibrated = slope * p_val
+        
+        # 2. Calculate R2 correlation for validation samples (indices >= num_calib)
+        t_val_val = t_val[num_calib:]
+        p_val_val = p_val_calibrated[num_calib:]
+        
+        corr_val = np.corrcoef(t_val_val, p_val_val)[0, 1]
+        r2_val = corr_val ** 2 if not np.isnan(corr_val) else 0.0
+        
+        # 3. Plot calibration standards
+        ax.scatter(t_val[:num_calib], p_val_calibrated[:num_calib], 
+                   color='#d62728', marker='o', edgecolors='k', s=80, label='Cal. Standards')
+        
+        # 4. Plot validation samples
+        ax.scatter(t_val[num_calib:], p_val_calibrated[num_calib:], 
+                   color='#1f77b4', marker='.', alpha=0.7, s=50, label=f'Validation (R² = {r2_val:.4f})')
+        
+        # 1:1 line range
+        min_val = min(np.min(t_val), np.min(p_val_calibrated))
+        max_val = max(np.max(t_val), np.max(p_val_calibrated))
+        margin = (max_val - min_val) * 0.1 if max_val > min_val else 0.1
+        line_range = np.linspace(min_val - margin, max_val + margin, 100)
+        
+        ax.plot(line_range, line_range, color='gray', linestyle='--', alpha=0.7, label='1:1 Line')
+        
+        comp_name = component_names[r] if component_names is not None else f'Component {r+1}'
+        ax.set_title(f'{comp_name} Calibration')
+        ax.set_xlabel('True Concentration')
+        ax.set_ylabel('Calibrated Concentration')
+        ax.set_xlim(min_val - margin, max_val + margin)
+        ax.set_ylim(min_val - margin, max_val + margin)
+        ax.grid(True, linestyle=':', alpha=0.6)
+        ax.legend()
+        
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+        print(f"Scores parity plot saved to {save_path}")
     else:
         plt.show()
     plt.close()

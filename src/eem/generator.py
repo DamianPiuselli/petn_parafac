@@ -28,10 +28,22 @@ class EEMGenerator:
         # Component 1: Phenanthrene-like (short ex/em)
         # Component 2: Anthracene-like (medium ex/em)
         # Component 3: Humic-like (broad, longer ex/em)
-        self.comp_ex_means = [270.0, 310.0, 350.0]
-        self.comp_ex_stds = [15.0, 20.0, 25.0]
-        self.comp_em_means = [340.0, 390.0, 450.0]
-        self.comp_em_stds = [20.0, 25.0, 30.0]
+        if num_components == 3:
+            self.comp_ex_means = [270.0, 310.0, 350.0]
+            self.comp_ex_stds = [15.0, 20.0, 25.0]
+            self.comp_em_means = [340.0, 390.0, 450.0]
+            self.comp_em_stds = [20.0, 25.0, 30.0]
+        else:
+            # Dynamically space means across ex and em ranges
+            ex_span = ex_range[1] - ex_range[0]
+            em_span = em_range[1] - em_range[0]
+            
+            # Linear spacing for means with padding from range borders
+            self.comp_ex_means = list(np.linspace(ex_range[0] + ex_span * 0.15, ex_range[1] - ex_span * 0.15, num_components))
+            self.comp_ex_stds = list(np.ones(num_components) * (ex_span / (num_components * 4.0)))
+            
+            self.comp_em_means = list(np.linspace(em_range[0] + em_span * 0.15, em_range[1] - em_span * 0.15, num_components))
+            self.comp_em_stds = list(np.ones(num_components) * (em_span / (num_components * 4.0)))
 
     def generate_profiles(self):
         """
@@ -135,9 +147,14 @@ class EEMGenerator:
             gamma: 3D numpy array of shape (num_samples, num_ex, num_em)
         """
         B, _ = self.generate_profiles()
-        true_alpha = np.array([0.15, 0.10, 0.20])
+        base_alpha = [0.15, 0.10, 0.20]
+        if self.num_components <= len(base_alpha):
+            true_alpha = np.array(base_alpha[:self.num_components])
+        else:
+            true_alpha = np.array(base_alpha * (self.num_components // len(base_alpha) + 1))[:self.num_components]
         E = B * true_alpha
         M = np.zeros((self.num_em, self.num_components))
+
         
         # Define background CDOM solvent absorbances
         lambda_0 = 240.0

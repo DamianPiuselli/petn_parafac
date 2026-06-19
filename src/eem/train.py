@@ -202,21 +202,25 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
     E_true = data['E']
     M_true = data['M']
     
-    # Pre-flatten coordinate vectors for fast full-batch training on CPU
+    # Device setup
+    device = torch.device('cuda' if torch.cuda.is_available() else ('mps' if torch.backends.mps.is_available() else 'cpu'))
+    print(f"Using device: {device}")
+    
+    # Pre-flatten coordinate vectors for fast full-batch training
     sample_grid, ex_grid, em_grid = np.meshgrid(
         np.arange(generator.num_samples),
         np.arange(generator.num_ex),
         np.arange(generator.num_em),
         indexing='ij'
     )
-    sample_indices = torch.tensor(sample_grid.reshape(-1), dtype=torch.long)
-    ex_indices = torch.tensor(ex_grid.reshape(-1), dtype=torch.long)
-    em_indices = torch.tensor(em_grid.reshape(-1), dtype=torch.long)
-    intensities = torch.tensor(X.reshape(-1), dtype=torch.float32)
+    sample_indices = torch.tensor(sample_grid.reshape(-1), dtype=torch.long, device=device)
+    ex_indices = torch.tensor(ex_grid.reshape(-1), dtype=torch.long, device=device)
+    em_indices = torch.tensor(em_grid.reshape(-1), dtype=torch.long, device=device)
+    intensities = torch.tensor(X.reshape(-1), dtype=torch.float32, device=device)
     
     # Broadcast 2D mask to 3D for coordinates
     mask_3d = mask_2d[np.newaxis, :, :].repeat(generator.num_samples, axis=0)
-    mask_values = torch.tensor(mask_3d.reshape(-1), dtype=torch.float32)
+    mask_values = torch.tensor(mask_3d.reshape(-1), dtype=torch.float32, device=device)
     
     # Compute true background CDOM absorbances to register as buffers
     lambda_0 = 240.0
@@ -234,7 +238,7 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
         ex_bg=A_bg_ex,
         em_bg=A_bg_em,
         num_components=generator.num_components
-    )
+    ).to(device)
     
     # Simple Adam optimizer for all parameters since they are all physical embeddings
     optimizer = optim.Adam(model.parameters(), lr=lr)

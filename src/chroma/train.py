@@ -469,10 +469,17 @@ def evaluate_chroma_alignment(model, dataset, save_dir='notebooks/chroma'):
         time_grid = np.linspace(0.0, 1.0, B_true.shape[0])
         spec_grid = np.linspace(200.0, 400.0, C_true.shape[0])
         
+        synthetic_names = [
+            "Component 1 (Baseline Interference)",
+            "Component 2 (Peak 1)",
+            "Component 3 (Peak 2)"
+        ]
+
         # 1. Resolved profiles comparison
         plot_chroma_resolved_vs_true_profiles(
             B_true, C_true, B_pred_ordered, C_pred_ordered,
-            time_grid, spec_grid,
+            time_grid, spec_grid, component_names=synthetic_names,
+            plot_type='dad',
             save_path=os.path.join(save_dir, 'chroma_resolved_profiles.png')
         )
         
