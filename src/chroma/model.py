@@ -1,17 +1,17 @@
 """
-Chroma-PETN Model Architecture.
-Implements the Physics-Embedded Tensor Network for Chromatographic Alignment.
-Contains the trilinear core with non-negative constraints and a differentiable 1D warping layer.
+Chroma-PETN Model Architectures.
+Provides separated model architectures for GC-MS and HPLC-DAD.
+Implements the base class ChromaPETNBase and subclasses ChromaPETNGCMS and ChromaPETNDAD.
 """
 import torch
 import torch.nn as nn
 
-class ChromaPETN(nn.Module):
+class ChromaPETNBase(nn.Module):
     """
-    Physics-Embedded Tensor Network for Chromatographic Alignment (Chroma-PETN).
+    Base class for Physics-Embedded Tensor Network for Chromatographic Alignment (Chroma-PETN).
     Models the trilinear PARAFAC core with a differentiable coordinate warping layer.
     """
-    def __init__(self, num_samples, num_time, num_spec, num_components=3, warp_type='linear', num_segments=4, derivative_order=0, sg_window_size=11, sg_polyorder=2):
+    def __init__(self, num_samples, num_time, num_spec, num_components=3, warp_type='linear', num_segments=4):
         super().__init__()
         self.num_samples = num_samples
         self.num_time = num_time
@@ -19,9 +19,6 @@ class ChromaPETN(nn.Module):
         self.num_components = num_components
         self.warp_type = warp_type
         self.num_segments = num_segments
-        self.derivative_order = derivative_order
-        self.sg_window_size = sg_window_size
-        self.sg_polyorder = sg_polyorder
         
         # Validate warp type
         if warp_type not in ['linear', 'quadratic', 'spline']:
@@ -46,19 +43,6 @@ class ChromaPETN(nn.Module):
             # piecewise linear spline: shift at start + log-increments per segment
             self.warp_shift = nn.Parameter(torch.zeros(num_samples))
             self.warp_log_increments = nn.Parameter(torch.zeros(num_samples, num_segments))
-            
-        # 3. Register Savitzky-Golay coefficients buffer
-        if self.derivative_order > 0:
-            if self.sg_window_size is None:
-                raise ValueError("sg_window_size must be specified if derivative_order > 0")
-            if self.sg_window_size % 2 == 0:
-                raise ValueError("sg_window_size must be odd")
-            if self.sg_polyorder >= self.sg_window_size:
-                raise ValueError("sg_polyorder must be less than sg_window_size")
-                
-            from scipy.signal import savgol_coeffs
-            coeffs = savgol_coeffs(self.sg_window_size, self.sg_polyorder, deriv=self.derivative_order)
-            self.register_buffer('sg_kernel', torch.tensor(coeffs, dtype=torch.float32).view(1, 1, -1))
             
         self.reset_parameters()
 
@@ -105,20 +89,6 @@ class ChromaPETN(nn.Module):
             self.warp_log_increments.data -= self.warp_log_increments.data.mean(dim=0, keepdim=True)
             self.warp_shift.clamp_(min=-0.15, max=0.15)
             self.warp_log_increments.clamp_(min=-1.0, max=1.0)
-
-    def forward(self, sample_idx, time_idx, spec_idx):
-        """
-        Args:
-            sample_idx: Tensor of shape (BatchSize,) containing sample indices
-            time_idx: Tensor of shape (BatchSize,) containing time channel indices
-            spec_idx: Tensor of shape (BatchSize,) containing spectral channel indices
-        Returns:
-            y_pred: Predicted observed intensities of shape (BatchSize,)
-        """
-        if self.derivative_order == 0:
-            return self._forward_raw(sample_idx, time_idx, spec_idx)
-        else:
-            return self._forward_derivative(sample_idx, time_idx, spec_idx)
 
     def _forward_raw(self, sample_idx, time_idx, spec_idx):
         # 1. Lookup scores and spectra
@@ -189,6 +159,47 @@ class ChromaPETN(nn.Module):
         y_pred = torch.sum(a * b_warped * c, dim=1)
         return y_pred
 
+
+class ChromaPETNGCMS(ChromaPETNBase):
+    """
+    GC-MS specific Physics-Embedded Tensor Network for Chromatographic Alignment.
+    Implements a standard non-negative raw forward pass without baseline derivatives.
+    """
+    def forward(self, sample_idx, time_idx, spec_idx):
+        return self._forward_raw(sample_idx, time_idx, spec_idx)
+
+
+class ChromaPETNDAD(ChromaPETNBase):
+    """
+    HPLC-DAD specific Physics-Embedded Tensor Network for Chromatographic Alignment.
+    Allows continuous absorbance modeling and embeds an analytical Savitzky-Golay derivative filter in the forward pass.
+    """
+    def __init__(self, num_samples, num_time, num_spec, num_components=3, warp_type='linear', num_segments=4,
+                 derivative_order=1, sg_window_size=11, sg_polyorder=2):
+        super().__init__(num_samples, num_time, num_spec, num_components=num_components, warp_type=warp_type, num_segments=num_segments)
+        self.derivative_order = derivative_order
+        self.sg_window_size = sg_window_size
+        self.sg_polyorder = sg_polyorder
+        
+        # Register Savitzky-Golay coefficients buffer
+        if self.derivative_order > 0:
+            if self.sg_window_size is None:
+                raise ValueError("sg_window_size must be specified if derivative_order > 0")
+            if self.sg_window_size % 2 == 0:
+                raise ValueError("sg_window_size must be odd")
+            if self.sg_polyorder >= self.sg_window_size:
+                raise ValueError("sg_polyorder must be less than sg_window_size")
+                
+            from scipy.signal import savgol_coeffs
+            coeffs = savgol_coeffs(self.sg_window_size, self.sg_polyorder, deriv=self.derivative_order)
+            self.register_buffer('sg_kernel', torch.tensor(coeffs, dtype=torch.float32).view(1, 1, -1))
+
+    def forward(self, sample_idx, time_idx, spec_idx):
+        if self.derivative_order == 0:
+            return self._forward_raw(sample_idx, time_idx, spec_idx)
+        else:
+            return self._forward_derivative(sample_idx, time_idx, spec_idx)
+
     def _forward_derivative(self, sample_idx, time_idx, spec_idx):
         m = self.sg_window_size // 2
         W = self.sg_window_size
@@ -219,4 +230,58 @@ class ChromaPETN(nn.Module):
         y_deriv = torch.nn.functional.conv1d(y_raw_window, self.sg_kernel, padding=0)
         
         # Squeeze to shape (BatchSize,)
+        return y_deriv.view(-1)
+
+
+# Legacy alias/class kept for backward compatibility with external code
+class ChromaPETN(ChromaPETNBase):
+    """
+    General entrypoint class kept for backward compatibility.
+    Dynamically routes behavior between raw and derivative forward modes.
+    """
+    def __init__(self, num_samples, num_time, num_spec, num_components=3, warp_type='linear', num_segments=4,
+                 derivative_order=0, sg_window_size=11, sg_polyorder=2):
+        super().__init__(num_samples, num_time, num_spec, num_components=num_components, warp_type=warp_type, num_segments=num_segments)
+        self.derivative_order = derivative_order
+        self.sg_window_size = sg_window_size
+        self.sg_polyorder = sg_polyorder
+        
+        # Register Savitzky-Golay coefficients buffer if needed
+        if self.derivative_order > 0:
+            if self.sg_window_size is None:
+                raise ValueError("sg_window_size must be specified if derivative_order > 0")
+            if self.sg_window_size % 2 == 0:
+                raise ValueError("sg_window_size must be odd")
+            if self.sg_polyorder >= self.sg_window_size:
+                raise ValueError("sg_polyorder must be less than sg_window_size")
+                
+            from scipy.signal import savgol_coeffs
+            coeffs = savgol_coeffs(self.sg_window_size, self.sg_polyorder, deriv=self.derivative_order)
+            self.register_buffer('sg_kernel', torch.tensor(coeffs, dtype=torch.float32).view(1, 1, -1))
+
+    def forward(self, sample_idx, time_idx, spec_idx):
+        if self.derivative_order == 0:
+            return self._forward_raw(sample_idx, time_idx, spec_idx)
+        else:
+            return self._forward_derivative(sample_idx, time_idx, spec_idx)
+
+    def _forward_derivative(self, sample_idx, time_idx, spec_idx):
+        m = self.sg_window_size // 2
+        W = self.sg_window_size
+        
+        offsets = torch.arange(-m, m + 1, device=time_idx.device)
+        time_window = time_idx.unsqueeze(-1) + offsets
+        time_window_clamped = torch.clamp(time_window, 0, self.num_time - 1)
+        
+        sample_window = sample_idx.unsqueeze(-1).expand(-1, W)
+        spec_window = spec_idx.unsqueeze(-1).expand(-1, W)
+        
+        sample_flat = sample_window.flatten()
+        time_flat = time_window_clamped.flatten()
+        spec_flat = spec_window.flatten()
+        
+        y_raw_flat = self._forward_raw(sample_flat, time_flat, spec_flat)
+        y_raw_window = y_raw_flat.view(-1, 1, W)
+        
+        y_deriv = torch.nn.functional.conv1d(y_raw_window, self.sg_kernel, padding=0)
         return y_deriv.view(-1)

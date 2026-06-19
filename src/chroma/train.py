@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 
-from src.chroma.model import ChromaPETN
+from src.chroma.model import ChromaPETNGCMS, ChromaPETNDAD
 from src.chroma.generator import ChromatographicDataGenerator
 
 def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_type='linear',
@@ -54,18 +54,28 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
     if num_components < 1:
         raise ValueError(f"num_components must be >= 1, got {num_components}")
     
-    # Instantiate model
-    model = ChromaPETN(
-        num_samples=I, 
-        num_time=J, 
-        num_spec=K, 
-        num_components=num_components, 
-        warp_type=warp_type, 
-        num_segments=num_segments,
-        derivative_order=derivative_order,
-        sg_window_size=sg_window_size,
-        sg_polyorder=sg_polyorder
-    ).to(device)
+    # Instantiate specific model subclass based on chromatography technique / derivative selection
+    if derivative_order > 0:
+        model = ChromaPETNDAD(
+            num_samples=I,
+            num_time=J,
+            num_spec=K,
+            num_components=num_components,
+            warp_type=warp_type,
+            num_segments=num_segments,
+            derivative_order=derivative_order,
+            sg_window_size=sg_window_size,
+            sg_polyorder=sg_polyorder
+        ).to(device)
+    else:
+        model = ChromaPETNGCMS(
+            num_samples=I,
+            num_time=J,
+            num_spec=K,
+            num_components=num_components,
+            warp_type=warp_type,
+            num_segments=num_segments
+        ).to(device)
 
     # 3. Model Compilation Optimization (optional)
     if compile_model:

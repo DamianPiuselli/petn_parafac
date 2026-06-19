@@ -121,3 +121,36 @@ def test_chroma_model_spline():
         # w elements must be strictly increasing
         diffs = torch.diff(w)
         assert torch.all(diffs > 0.0)
+
+def test_chroma_subclasses():
+    from src.chroma.model import ChromaPETNBase, ChromaPETNGCMS, ChromaPETNDAD
+    
+    num_samples = 4
+    num_time = 30
+    num_spec = 20
+    
+    # 1. Test GC-MS subclass (no derivative buffer registered)
+    model_gcms = ChromaPETNGCMS(num_samples, num_time, num_spec, num_components=2)
+    assert isinstance(model_gcms, ChromaPETNBase)
+    assert not hasattr(model_gcms, 'sg_kernel')
+    
+    # Create batch of coordinates
+    batch_size = 10
+    sample_idx = torch.randint(0, num_samples, (batch_size,))
+    time_idx = torch.randint(0, num_time, (batch_size,))
+    spec_idx = torch.randint(0, num_spec, (batch_size,))
+    
+    y_gcms = model_gcms(sample_idx, time_idx, spec_idx)
+    assert y_gcms.shape == (batch_size,)
+    
+    # 2. Test DAD subclass (registers SG kernel buffer when derivative_order > 0)
+    model_dad = ChromaPETNDAD(
+        num_samples, num_time, num_spec, num_components=2,
+        derivative_order=2, sg_window_size=11, sg_polyorder=2
+    )
+    assert isinstance(model_dad, ChromaPETNBase)
+    assert hasattr(model_dad, 'sg_kernel')
+    assert model_dad.sg_kernel.shape == (1, 1, 11)
+    
+    y_dad = model_dad(sample_idx, time_idx, spec_idx)
+    assert y_dad.shape == (batch_size,)
