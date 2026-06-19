@@ -37,3 +37,18 @@ def test_chroma_early_stopping(capsys):
     assert "Early stopping at epoch    2" in captured.out
 
 
+def test_chroma_training_coordinate_and_compile():
+    # Generate a tiny dataset
+    gen = ChromatographicDataGenerator(num_samples=4, num_time=20, num_spec=15, num_components=3, seed=123)
+    dataset = gen.generate_dataset(noise_std=0.01, max_shift=0.02, max_stretch=0.03)
+    
+    # Train with batch_size=200 to test coordinate-based mode
+    model_coord = train_chroma_petn(dataset, epochs=5, lr=0.05, warp_reg_coef=0.001, batch_size=200)
+    assert model_coord is not None
+
+    # Train with compile_model=True to test compilation path
+    model_compile = train_chroma_petn(dataset, epochs=5, lr=0.05, warp_reg_coef=0.001, compile_model=True)
+    assert model_compile is not None
+
+
+

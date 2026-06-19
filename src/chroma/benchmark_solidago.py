@@ -21,7 +21,7 @@ def calculate_cosine_similarity(v1, v2):
 
 from src.chroma.train import train_chroma_petn
 
-def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coef=0.001, warp_type='linear', num_segments=4, tol=1e-6, patience=50):
+def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coef=0.001, warp_type='linear', num_segments=4, tol=1e-6, patience=50, batch_size=None, compile_model=False):
     return train_chroma_petn(
         dataset=X,
         epochs=epochs,
@@ -31,8 +31,11 @@ def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coe
         num_segments=num_segments,
         tol=tol,
         patience=patience,
-        num_components=num_components
+        num_components=num_components,
+        batch_size=batch_size,
+        compile_model=compile_model
     )
+
 
 def main():
     print("==================================================")
@@ -83,7 +86,13 @@ def main():
     B_petn_lin = petn_lin.time_embeddings.weight.detach().cpu().numpy()
     C_petn_lin = petn_lin.spec_embeddings.weight.detach().cpu().numpy()
     with torch.no_grad():
-        coords_i, coords_j, coords_k = torch.meshgrid(torch.arange(4), torch.arange(434), torch.arange(60), indexing='ij')
+        device_lin = next(petn_lin.parameters()).device
+        coords_i, coords_j, coords_k = torch.meshgrid(
+            torch.arange(4, device=device_lin),
+            torch.arange(434, device=device_lin),
+            torch.arange(60, device=device_lin),
+            indexing='ij'
+        )
         y_pred_lin = petn_lin(coords_i.flatten(), coords_j.flatten(), coords_k.flatten()).cpu().numpy().reshape(4, 434, 60)
     r2_petn_lin = 1.0 - (np.sum((X_raw_norm - y_pred_lin)**2) / np.sum(X_raw_norm**2))
     
@@ -111,8 +120,16 @@ def main():
     B_petn_spl = petn_spl.time_embeddings.weight.detach().cpu().numpy()
     C_petn_spl = petn_spl.spec_embeddings.weight.detach().cpu().numpy()
     with torch.no_grad():
-        y_pred_spl = petn_spl(coords_i.flatten(), coords_j.flatten(), coords_k.flatten()).cpu().numpy().reshape(4, 434, 60)
+        device_spl = next(petn_spl.parameters()).device
+        coords_i_spl, coords_j_spl, coords_k_spl = torch.meshgrid(
+            torch.arange(4, device=device_spl),
+            torch.arange(434, device=device_spl),
+            torch.arange(60, device=device_spl),
+            indexing='ij'
+        )
+        y_pred_spl = petn_spl(coords_i_spl.flatten(), coords_j_spl.flatten(), coords_k_spl.flatten()).cpu().numpy().reshape(4, 434, 60)
     r2_petn_spl = 1.0 - (np.sum((X_raw_norm - y_pred_spl)**2) / np.sum(X_raw_norm**2))
+
     
     # Extract aligned profiles from spline PETN model
     petn_spl_aligned_tics = []

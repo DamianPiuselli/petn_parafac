@@ -12,7 +12,8 @@ from src.chroma.generator import ChromatographicDataGenerator
 
 def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_type='linear',
                       num_segments=4, tol=1e-6, patience=50, num_components=3,
-                      derivative_order=0, sg_window_size=11, sg_polyorder=2, batch_size=None):
+                      derivative_order=0, sg_window_size=11, sg_polyorder=2, batch_size=None,
+                      compile_model=False):
     """
     Trains the Chroma-PETN model on the provided dataset.
     
@@ -30,6 +31,7 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
         sg_window_size: Savitzky-Golay filter window size
         sg_polyorder: Savitzky-Golay polynomial order
         batch_size: If specified, chunk coordinate evaluation to prevent OOM
+        compile_model: If True, compile the model graph using torch.compile
         
     Returns:
         model: Trained ChromaPETN model instance
@@ -63,90 +65,213 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
         sg_window_size=sg_window_size,
         sg_polyorder=sg_polyorder
     ).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    
-    # Generate complete coordinate triplets for full-batch or batched training
-    coords_i, coords_j, coords_k = torch.meshgrid(
-        torch.arange(I, device=device), torch.arange(J, device=device), torch.arange(K, device=device), indexing='ij'
-    )
-    coords_i = coords_i.flatten()
-    coords_j = coords_j.flatten()
-    coords_k = coords_k.flatten()
-    
-    if derivative_order > 0:
-        from scipy.signal import savgol_filter
-        X_deriv = savgol_filter(X_np, window_length=sg_window_size, polyorder=sg_polyorder, deriv=derivative_order, axis=1)
-        y_target = torch.tensor(X_deriv, dtype=torch.float32, device=device)[coords_i, coords_j, coords_k]
-    else:
-        y_target = X[coords_i, coords_j, coords_k]
-        
-    y_target_var = torch.var(y_target).item()
-    num_coords = coords_i.shape[0]
-    best_loss = float('inf')
-    patience_counter = 0
-    
-    # Setup batch size
-    if batch_size is None:
-        batch_size = num_coords
-        
-    print(f"Training Chroma-PETN model ({warp_type} warp, R={num_components}) for {epochs} epochs...")
-    for epoch in range(epochs):
-        optimizer.zero_grad()
-        
-        # Accumulate MSE loss and backprop in chunks if batching is used
-        loss_mse_val = 0.0
-        for start_idx in range(0, num_coords, batch_size):
-            end_idx = min(start_idx + batch_size, num_coords)
-            batch_i = coords_i[start_idx:end_idx]
-            batch_j = coords_j[start_idx:end_idx]
-            batch_k = coords_k[start_idx:end_idx]
-            
-            y_pred_batch = model(batch_i, batch_j, batch_k)
-            y_target_batch = y_target[start_idx:end_idx]
-            
-            # Scale loss by batch fraction
-            batch_loss = nn.functional.mse_loss(y_pred_batch, y_target_batch) * (len(batch_i) / num_coords)
-            batch_loss.backward()
-            loss_mse_val += batch_loss.item()
-            
-        # Add regularization loss and backward
-        if model.warp_type == 'linear':
-            loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_stretch**2) + torch.mean(model.warp_shift**2))
-        elif model.warp_type == 'quadratic':
-            loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_alpha**2) + torch.mean(model.warp_beta**2) + torch.mean(model.warp_gamma**2))
-        elif model.warp_type == 'spline':
-            loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_shift**2) + torch.mean(model.warp_log_increments**2))
-            
-        loss_warp_reg.backward()
-        optimizer.step()
-        model.project_constraints()
-        
-        # Convergence & early stopping checks
-        if loss_mse_val < 1e-7 or loss_mse_val < 1e-5 * y_target_var:
-            print(f"Convergence reached at epoch {epoch:4d} (MSE Loss < target threshold). Final MSE: {loss_mse_val:.3e}")
-            break
-            
-        if epoch > 0:
-            change_abs = best_loss - loss_mse_val
-            change_rel = change_abs / (best_loss + 1e-10)
-            
-            # To qualify as improvement, it must exceed both absolute and relative deltas
-            if change_rel > tol and change_abs > tol * y_target_var:
-                best_loss = loss_mse_val
-                patience_counter = 0
-            else:
-                patience_counter += 1
-                
-            if patience_counter >= patience:
-                print(f"Early stopping at epoch {epoch:4d} (MSE did not decrease significantly for {patience} epochs). Final MSE: {loss_mse_val:.3e}")
-                break
+
+    # 3. Model Compilation Optimization (optional)
+    if compile_model:
+        if hasattr(torch, 'compile'):
+            try:
+                print("Compiling model graph using torch.compile...")
+                model = torch.compile(model)
+            except Exception as e:
+                print(f"Model compilation failed: {e}. Falling back to uncompiled model.")
         else:
-            best_loss = loss_mse_val
+            print("torch.compile is not supported on this PyTorch version. Using uncompiled model.")
+
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+
+    if batch_size is None:
+        # Full-grid training mode (Optimization 2)
+        print(f"Training Chroma-PETN model ({warp_type} warp, R={num_components}) in grid-based mode on {device}...")
+        
+        # Prepare targets
+        if derivative_order > 0:
+            from scipy.signal import savgol_filter
+            X_deriv = savgol_filter(X_np, window_length=sg_window_size, polyorder=sg_polyorder, deriv=derivative_order, axis=1)
+            y_target = torch.tensor(X_deriv, dtype=torch.float32, device=device)
+        else:
+            y_target = X
             
-        if (epoch + 1) % 200 == 0:
-            print(f"    Epoch {epoch+1:4d}/{epochs} | MSE Loss: {loss_mse_val:.3e} | Reg: {loss_warp_reg.item():.3e}")
+        y_target_var = torch.var(y_target).item()
+        
+        t_grid = torch.linspace(0.0, 1.0, J, device=device)
+        m = sg_window_size // 2
+        
+        best_loss = float('inf')
+        patience_counter = 0
+        
+        for epoch in range(epochs):
+            optimizer.zero_grad()
             
-    return model
+            # 1. Warp time coordinates per sample: shape (I, J)
+            if model.warp_type == 'linear':
+                stretch = model.warp_stretch.unsqueeze(-1)
+                shift = model.warp_shift.unsqueeze(-1)
+                t_warped = t_grid.unsqueeze(0) - (stretch * t_grid.unsqueeze(0) + shift)
+            elif model.warp_type == 'quadratic':
+                alpha = model.warp_alpha.unsqueeze(-1)
+                beta = model.warp_beta.unsqueeze(-1)
+                gamma = model.warp_gamma.unsqueeze(-1)
+                t_warped = t_grid.unsqueeze(0) - (alpha * (t_grid.unsqueeze(0)**2) + beta * t_grid.unsqueeze(0) + gamma)
+            elif model.warp_type == 'spline':
+                shift = model.warp_shift.unsqueeze(-1)
+                inc = (1.0 / model.num_segments) * torch.exp(model.warp_log_increments)
+                zeros = torch.zeros((I, 1), device=device, dtype=inc.dtype)
+                cum_inc = torch.cumsum(torch.cat([zeros, inc], dim=1), dim=1)
+                w = shift + cum_inc
+                
+                val = t_grid * model.num_segments
+                k = torch.clamp(torch.floor(val).long(), 0, model.num_segments - 1)
+                u = val - k.float()
+                
+                w_k = w[:, k]
+                w_kp1 = w[:, k + 1]
+                t_warped = (1.0 - u.unsqueeze(0)) * w_k + u.unsqueeze(0) * w_kp1
+                
+            # 2. Differentiable 1D Linear Interpolation over canonical B
+            x_warped = t_warped * (J - 1)
+            x_clamped = torch.clamp(x_warped, 0.0, J - 1.0 - 1e-3)
+            x_0 = torch.floor(x_clamped).long()
+            x_1 = x_0 + 1
+            
+            w_interp = (x_clamped - x_0.float()).unsqueeze(-1) # (I, J, 1)
+            
+            B_weights = model.time_embeddings.weight
+            val_0 = B_weights[x_0] # (I, J, R)
+            val_1 = B_weights[x_1] # (I, J, R)
+            b_warped = (1.0 - w_interp) * val_0 + w_interp * val_1 # (I, J, R)
+            
+            # 3. Reconstruct raw predicted intensities Y_pred: shape (I, J, K)
+            A_weights = model.sample_embeddings.weight
+            C_weights = model.spec_embeddings.weight
+            Y_pred = torch.einsum('ir,ijr,kr->ijk', A_weights, b_warped, C_weights)
+            
+            # 4. Apply Savitzky-Golay derivative along time axis if needed
+            if derivative_order > 0:
+                y_raw_window = Y_pred.transpose(1, 2).reshape(I * K, 1, J)
+                y_padded = torch.nn.functional.pad(y_raw_window, (m, m), mode='replicate')
+                y_deriv = torch.nn.functional.conv1d(y_padded, model.sg_kernel, padding=0)
+                Y_pred = y_deriv.view(I, K, J).transpose(1, 2)
+                
+            loss_mse = nn.functional.mse_loss(Y_pred, y_target)
+            
+            # Warp parameter regularization
+            if model.warp_type == 'linear':
+                loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_stretch**2) + torch.mean(model.warp_shift**2))
+            elif model.warp_type == 'quadratic':
+                loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_alpha**2) + torch.mean(model.warp_beta**2) + torch.mean(model.warp_gamma**2))
+            elif model.warp_type == 'spline':
+                loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_shift**2) + torch.mean(model.warp_log_increments**2))
+                
+            loss = loss_mse + loss_warp_reg
+            loss.backward()
+            optimizer.step()
+            model.project_constraints()
+            
+            # Convergence checks
+            loss_val = loss_mse.item()
+            if loss_val < 1e-7 or loss_val < 1e-5 * y_target_var:
+                print(f"Convergence reached at epoch {epoch:4d} (MSE Loss < target threshold). Final MSE: {loss_val:.3e}")
+                break
+                
+            if epoch > 0:
+                change_abs = best_loss - loss_val
+                change_rel = change_abs / (best_loss + 1e-10)
+                
+                if change_rel > tol and change_abs > tol * y_target_var:
+                    best_loss = loss_val
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+                    
+                if patience_counter >= patience:
+                    print(f"Early stopping at epoch {epoch:4d} (MSE did not decrease significantly for {patience} epochs). Final MSE: {loss_val:.3e}")
+                    break
+            else:
+                best_loss = loss_val
+                
+            if (epoch + 1) % 200 == 0:
+                print(f"    Epoch {epoch+1:4d}/{epochs} | MSE Loss: {loss_val:.3e} | Reg: {loss_warp_reg.item():.3e}")
+                
+        return model
+    else:
+        # Coordinate-based batched training mode (Optimization 1)
+        print(f"Training Chroma-PETN model ({warp_type} warp, R={num_components}) in coordinate-based mode (batch_size={batch_size}) on {device}...")
+        
+        # Generate complete coordinate triplets
+        coords_i, coords_j, coords_k = torch.meshgrid(
+            torch.arange(I, device=device), torch.arange(J, device=device), torch.arange(K, device=device), indexing='ij'
+        )
+        coords_i = coords_i.flatten()
+        coords_j = coords_j.flatten()
+        coords_k = coords_k.flatten()
+        
+        if derivative_order > 0:
+            from scipy.signal import savgol_filter
+            X_deriv = savgol_filter(X_np, window_length=sg_window_size, polyorder=sg_polyorder, deriv=derivative_order, axis=1)
+            y_target = torch.tensor(X_deriv, dtype=torch.float32, device=device)[coords_i, coords_j, coords_k]
+        else:
+            y_target = X[coords_i, coords_j, coords_k]
+            
+        y_target_var = torch.var(y_target).item()
+        num_coords = coords_i.shape[0]
+        best_loss = float('inf')
+        patience_counter = 0
+        
+        for epoch in range(epochs):
+            optimizer.zero_grad()
+            
+            # Accumulate MSE loss and backprop in chunks if batching is used
+            loss_mse_val = 0.0
+            for start_idx in range(0, num_coords, batch_size):
+                end_idx = min(start_idx + batch_size, num_coords)
+                batch_i = coords_i[start_idx:end_idx]
+                batch_j = coords_j[start_idx:end_idx]
+                batch_k = coords_k[start_idx:end_idx]
+                
+                y_pred_batch = model(batch_i, batch_j, batch_k)
+                y_target_batch = y_target[start_idx:end_idx]
+                
+                batch_loss = nn.functional.mse_loss(y_pred_batch, y_target_batch) * (len(batch_i) / num_coords)
+                batch_loss.backward()
+                loss_mse_val += batch_loss.item()
+                
+            # Add regularization loss and backward
+            if model.warp_type == 'linear':
+                loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_stretch**2) + torch.mean(model.warp_shift**2))
+            elif model.warp_type == 'quadratic':
+                loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_alpha**2) + torch.mean(model.warp_beta**2) + torch.mean(model.warp_gamma**2))
+            elif model.warp_type == 'spline':
+                loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_shift**2) + torch.mean(model.warp_log_increments**2))
+                
+            loss_warp_reg.backward()
+            optimizer.step()
+            model.project_constraints()
+            
+            # Convergence checks
+            if loss_mse_val < 1e-7 or loss_mse_val < 1e-5 * y_target_var:
+                print(f"Convergence reached at epoch {epoch:4d} (MSE Loss < target threshold). Final MSE: {loss_mse_val:.3e}")
+                break
+                
+            if epoch > 0:
+                change_abs = best_loss - loss_mse_val
+                change_rel = change_abs / (best_loss + 1e-10)
+                
+                if change_rel > tol and change_abs > tol * y_target_var:
+                    best_loss = loss_mse_val
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+                    
+                if patience_counter >= patience:
+                    print(f"Early stopping at epoch {epoch:4d} (MSE did not decrease significantly for {patience} epochs). Final MSE: {loss_mse_val:.3e}")
+                    break
+            else:
+                best_loss = loss_mse_val
+                
+            if (epoch + 1) % 200 == 0:
+                print(f"    Epoch {epoch+1:4d}/{epochs} | MSE Loss: {loss_mse_val:.3e} | Reg: {loss_warp_reg.item():.3e}")
+                
+        return model
 
 def calculate_cosine_similarity(v1, v2):
     """Calculates cosine similarity (correlation coefficient) between two vectors."""

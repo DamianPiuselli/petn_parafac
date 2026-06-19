@@ -82,7 +82,7 @@ def match_and_align_profiles(A_pred, C_pred, A_true, C_true):
 
 from src.chroma.train import train_chroma_petn
 
-def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coef=0.001, warp_type='linear', num_segments=4, tol=1e-6, patience=50):
+def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coef=0.001, warp_type='linear', num_segments=4, tol=1e-6, patience=50, batch_size=None, compile_model=False):
     return train_chroma_petn(
         dataset=X,
         epochs=epochs,
@@ -92,8 +92,11 @@ def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coe
         num_segments=num_segments,
         tol=tol,
         patience=patience,
-        num_components=num_components
+        num_components=num_components,
+        batch_size=batch_size,
+        compile_model=compile_model
     )
+
 
 def main():
     print("==================================================")
