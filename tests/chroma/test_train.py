@@ -13,7 +13,7 @@ def test_chroma_training_integration():
     model = train_chroma_petn(dataset, epochs=10, lr=0.05, warp_reg_coef=0.001)
     
     # Verify training completed and evaluate returns metrics
-    metrics = evaluate_chroma_alignment(model, dataset)
+    metrics = evaluate_chroma_alignment(model, dataset, save_dir=None)
     
     assert 'b_similarities' in metrics
     assert 'c_similarities' in metrics

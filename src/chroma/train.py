@@ -280,7 +280,7 @@ def calculate_cosine_similarity(v1, v2):
     v2_norm = v2 / np.linalg.norm(v2)
     return np.max([np.dot(v1_norm, v2_norm), np.dot(v1_norm, -v2_norm)])
 
-def evaluate_chroma_alignment(model, dataset):
+def evaluate_chroma_alignment(model, dataset, save_dir='notebooks/chroma'):
     """
     Evaluates profile recovery and shift recovery.
     Resolves permutation/scaling ambiguities and prints correlation metrics.
@@ -455,40 +455,42 @@ def evaluate_chroma_alignment(model, dataset):
         print(f"  Warp Model:                   {model.warp_type}")
         print(f"  Mean absolute coordinate error: {mean_coord_mae:.4f} (normalized time units)")
     
-    # Generate and save comparison plots in notebooks/chroma/
-    import os
-    os.makedirs('notebooks/chroma', exist_ok=True)
-    
-    from src.common.utils import (
-        plot_chroma_resolved_vs_true_profiles,
-        plot_chroma_alignment_comparison,
-        plot_chroma_warp_parameters
-    )
-    
-    time_grid = np.linspace(0.0, 1.0, B_true.shape[0])
-    spec_grid = np.linspace(200.0, 400.0, C_true.shape[0])
-    
-    # 1. Resolved profiles comparison
-    plot_chroma_resolved_vs_true_profiles(
-        B_true, C_true, B_pred_ordered, C_pred_ordered,
-        time_grid, spec_grid,
-        save_path='notebooks/chroma/chroma_resolved_profiles.png'
-    )
-    
-    # 2. Alignment comparison (Observed vs Aligned Chromatograms)
-    plot_chroma_alignment_comparison(
-        time_grid, dataset['X'], X_aligned,
-        save_path='notebooks/chroma/chroma_alignment_comparison.png'
-    )
-    
-    # 3. Warp parameters recovery plot (only for linear warp model)
-    if model.warp_type == 'linear':
-        plot_chroma_warp_parameters(
-            shifts_true_centered, stretches_true_centered, shifts_pred_centered, stretches_pred_centered,
-            save_path='notebooks/chroma/chroma_warp_parameters.png'
+    if save_dir:
+        # Generate and save comparison plots in save_dir
+        import os
+        os.makedirs(save_dir, exist_ok=True)
+        
+        from src.common.utils import (
+            plot_chroma_resolved_vs_true_profiles,
+            plot_chroma_alignment_comparison,
+            plot_chroma_warp_parameters
         )
-    else:
-        print("  Warp parameter plotting skipped for non-linear warp models.")
+        
+        time_grid = np.linspace(0.0, 1.0, B_true.shape[0])
+        spec_grid = np.linspace(200.0, 400.0, C_true.shape[0])
+        
+        # 1. Resolved profiles comparison
+        plot_chroma_resolved_vs_true_profiles(
+            B_true, C_true, B_pred_ordered, C_pred_ordered,
+            time_grid, spec_grid,
+            save_path=os.path.join(save_dir, 'chroma_resolved_profiles.png')
+        )
+        
+        # 2. Alignment comparison (Observed vs Aligned Chromatograms)
+        plot_chroma_alignment_comparison(
+            time_grid, dataset['X'], X_aligned,
+            save_path=os.path.join(save_dir, 'chroma_alignment_comparison.png')
+        )
+        
+        # 3. Warp parameters recovery plot (only for linear warp model)
+        if model.warp_type == 'linear':
+            plot_chroma_warp_parameters(
+                shifts_true_centered, stretches_true_centered, shifts_pred_centered, stretches_pred_centered,
+                save_path=os.path.join(save_dir, 'chroma_warp_parameters.png')
+            )
+        else:
+            print("  Warp parameter plotting skipped for non-linear warp models.")
+
     
     return metrics
 
