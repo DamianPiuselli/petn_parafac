@@ -19,70 +19,20 @@ def calculate_cosine_similarity(v1, v2):
     v2_norm = v2 / (np.linalg.norm(v2) + 1e-10)
     return np.max([np.dot(v1_norm, v2_norm), np.dot(v1_norm, -v2_norm)])
 
+from src.chroma.train import train_chroma_petn
+
 def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coef=0.001, warp_type='linear', num_segments=4, tol=1e-6, patience=50):
-    device = torch.device('cuda' if torch.cuda.is_available() else ('mps' if torch.backends.mps.is_available() else 'cpu'))
-    X_tensor = torch.tensor(X, dtype=torch.float32, device=device)
-    I, J, K = X_tensor.shape
-    
-    model = ChromaPETN(num_samples=I, num_time=J, num_spec=K, num_components=num_components, warp_type=warp_type, num_segments=num_segments).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    
-    coords_i, coords_j, coords_k = torch.meshgrid(
-        torch.arange(I, device=device), torch.arange(J, device=device), torch.arange(K, device=device), indexing='ij'
+    return train_chroma_petn(
+        dataset=X,
+        epochs=epochs,
+        lr=lr,
+        warp_reg_coef=warp_reg_coef,
+        warp_type=warp_type,
+        num_segments=num_segments,
+        tol=tol,
+        patience=patience,
+        num_components=num_components
     )
-    coords_i = coords_i.flatten()
-    coords_j = coords_j.flatten()
-    coords_k = coords_k.flatten()
-    y_target = X_tensor[coords_i, coords_j, coords_k]
-    
-    y_target_var = torch.var(y_target).item()
-    best_loss = float('inf')
-    patience_counter = 0
-    
-    for epoch in range(epochs):
-        optimizer.zero_grad()
-        y_pred = model(coords_i, coords_j, coords_k)
-        loss_mse = torch.nn.functional.mse_loss(y_pred, y_target)
-        
-        if model.warp_type == 'linear':
-            loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_stretch**2) + torch.mean(model.warp_shift**2))
-        elif model.warp_type == 'quadratic':
-            loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_alpha**2) + torch.mean(model.warp_beta**2) + torch.mean(model.warp_gamma**2))
-        elif model.warp_type == 'spline':
-            loss_warp_reg = warp_reg_coef * (torch.mean(model.warp_shift**2) + torch.mean(model.warp_log_increments**2))
-            
-        loss = loss_mse + loss_warp_reg
-        loss.backward()
-        optimizer.step()
-        model.project_constraints()
-        
-        # Convergence and early stopping checks
-        loss_mse_val = loss_mse.item()
-        if loss_mse_val < 1e-7 or loss_mse_val < 1e-5 * y_target_var:
-            print(f"Convergence reached at epoch {epoch:4d} (MSE Loss < target threshold). Final MSE: {loss_mse_val:.3e}")
-            break
-            
-        if epoch > 0:
-            change_abs = best_loss - loss_mse_val
-            change_rel = change_abs / (best_loss + 1e-10)
-            
-            # To qualify as improvement, it must exceed both absolute and relative deltas
-            if change_rel > tol and change_abs > tol * y_target_var:
-                best_loss = loss_mse_val
-                patience_counter = 0
-            else:
-                patience_counter += 1
-                
-            if patience_counter >= patience:
-                print(f"Early stopping at epoch {epoch:4d} (MSE did not decrease significantly for {patience} epochs). Final MSE: {loss_mse_val:.3e}")
-                break
-        else:
-            best_loss = loss_mse_val
-            
-        if (epoch + 1) % 200 == 0:
-            print(f"    Epoch {epoch+1:4d}/{epochs} | MSE Loss: {loss_mse_val:.3e} | Reg: {loss_warp_reg.item():.3e}")
-            
-    return model
 
 def main():
     print("==================================================")

@@ -103,6 +103,26 @@ graph TD
     class B_warped,Product,X_pred,Loss output;
 ```
 
+### Savitzky-Golay Derivative Layer (Analytical Derivatives)
+
+When chromatographic datasets are corrupted by baseline drift or high component overlap (e.g. Lignin Phenols HPLC-DAD data), training on raw absorbance fails due to severe collinearity. Chroma-PETN resolves this by embedding an analytical Savitzky-Golay derivative layer into the PyTorch forward pass:
+
+1. A window of size $W$ is built around the query time coordinate $t_{i, j}$.
+2. The model evaluates raw intensities for the entire window in a single forward pass.
+3. A 1D convolutional kernel containing Savitzky-Golay filtering coefficients is applied to resolve the analytical $d$-th derivative (e.g. second derivative, $d=2$) at the query coordinate.
+
+$$\hat{y}^{(d)}_{\text{obs}}(i, j, k) = \sum_{m=-M}^M c_m^{(d)} \cdot \hat{y}_{\text{obs}}(i, j+m, k)$$
+
+This lets gradients flow end-to-end through the derivative filter back to the warping parameters and canonical profiles, resolving baseline drift natively inside the computational graph.
+
+### Variance-Scaled Early Stopping & Scientific Logging
+
+To handle amplitude-dampened data scales (like second-derivatives where signal variance $\sigma^2_y$ is of order $10^{-7}$), absolute convergence thresholds fail. Chroma-PETN implements a variance-scaled early stopping algorithm:
+
+* **Convergence Trigger:** Training terminates if the reconstruction loss falls below $10^{-7}$ or $10^{-5} \cdot \sigma^2_y$.
+* **Significance Check:** An improvement in loss qualifies only if the absolute change $\Delta\text{MSE} > \text{tol} \cdot \sigma^2_y$ and the relative change exceeds `tol`.
+* **Logging:** Output values are printed using scientific notation (`%.3e`) to prevent round-off display ambiguity.
+
 ---
 
 ## 2. Package Structure
@@ -139,8 +159,38 @@ python -m src.chroma.train
 
 ## 4. Usage Guide
 
-### Importing the Model in Custom Workflows
-You can import `ChromaPETN` directly to align your own experimental chromatograms:
+### Consolidated Training API
+
+You can train Chroma-PETN directly on a 3D dataset array using the high-level `train_chroma_petn` utility:
+
+```python
+from src.chroma.train import train_chroma_petn, evaluate_chroma_alignment
+
+# X is a 3D numpy array of shape (Samples, Time, Spec)
+# Train with a second-derivative Savitzky-Golay filter and spline warping:
+model = train_chroma_petn(
+    dataset=X,
+    num_components=3,
+    epochs=1000,
+    lr=0.015,
+    warp_type='spline',
+    num_segments=4,
+    derivative_order=2,
+    sg_window_size=15,
+    batch_size=50000,   # batch coordinates to prevent OOM
+    tol=1e-6,
+    patience=50
+)
+
+# Extract aligned profiles
+# model.sample_embeddings.weight -> Scores (A)
+# model.time_embeddings.weight   -> Aligned chromatography profiles (B)
+# model.spec_embeddings.weight   -> Pure spectra loadings (C)
+```
+
+### Advanced Custom Training Loop
+
+If you need custom loss functions or training control, instantiate `ChromaPETN` directly:
 
 ```python
 import torch
@@ -148,21 +198,28 @@ from src.chroma.model import ChromaPETN
 
 # Initialize model
 # I = num_samples, J = num_retention_times, K = num_spectral_channels
-model = ChromaPETN(num_samples=12, num_time=150, num_spec=100, num_components=3)
+model = ChromaPETN(
+    num_samples=12, 
+    num_time=150, 
+    num_spec=100, 
+    num_components=3,
+    warp_type='quadratic',
+    derivative_order=2,
+    sg_window_size=15
+)
 
-# Train on coordinate batches
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
 for epoch in range(1000):
     optimizer.zero_grad()
     
-    # coords represent sample_idx, time_idx, spectral_idx batches
-    y_pred = model(sample_idx, time_idx, spec_idx)
+    # coords_i, coords_j, coords_k represent flat coordinate batches
+    y_pred = model(coords_i, coords_j, coords_k)
     loss = torch.nn.functional.mse_loss(y_pred, y_target)
     
     loss.backward()
     optimizer.step()
     
-    # Enforce non-negativity and mean-centering at every step!
+    # CRITICAL: Project physical non-negativity and centering constraints at every step!
     model.project_constraints()
 ```
