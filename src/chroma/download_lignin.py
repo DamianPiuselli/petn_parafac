@@ -16,6 +16,37 @@ class CatchRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise RedirectException(newurl)
 
+def get_env_proxy():
+    for var in ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy']:
+        val = os.environ.get(var)
+        if val:
+            return val
+    return None
+
+def get_proxy_handler():
+    proxy_url = get_env_proxy()
+    if proxy_url:
+        return urllib.request.ProxyHandler({
+            'http': proxy_url,
+            'https': proxy_url
+        })
+    return None
+
+def get_proxy_host_port():
+    proxy_url = get_env_proxy()
+    if proxy_url:
+        try:
+            if not proxy_url.startswith(('http://', 'https://')):
+                parsed = urllib.parse.urlparse('http://' + proxy_url)
+            else:
+                parsed = urllib.parse.urlparse(proxy_url)
+            host = parsed.hostname
+            port = parsed.port or 8080
+            return host, port
+        except Exception as e:
+            print(f"Error parsing proxy from environment: {e}")
+    return None, None
+
 def get_redirect_url(url):
     print("Getting redirect URL...")
     # First: Try direct connection
@@ -28,13 +59,16 @@ def get_redirect_url(url):
         return e.url
     except Exception as e_direct:
         print(f"Direct connection failed to get redirect URL: {e_direct}")
+        
         # Second: Try local proxy fallback
-        print("Retrying with local proxy...")
+        proxy_handler = get_proxy_handler()
+        if not proxy_handler:
+            print("No proxy environment variables found. Skipping proxy redirect attempt.")
+            return None
+
+        print("Retrying with proxy from environment...")
         opener_proxy = urllib.request.build_opener(CatchRedirect())
-        opener_proxy.add_handler(urllib.request.ProxyHandler({
-            'http': 'http://proxy.cnea.gob.ar:1280',
-            'https': 'http://proxy.cnea.gob.ar:1280'
-        }))
+        opener_proxy.add_handler(proxy_handler)
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             opener_proxy.open(req)
@@ -57,10 +91,7 @@ def fetch_proxy_list():
     opener_direct = urllib.request.build_opener()
     
     # Proxy opener fallback
-    opener_proxy = urllib.request.build_opener(urllib.request.ProxyHandler({
-        'http': 'http://proxy.cnea.gob.ar:1280',
-        'https': 'http://proxy.cnea.gob.ar:1280'
-    }))
+    proxy_handler = get_proxy_handler()
     
     for url in proxy_urls:
         success = False
@@ -76,9 +107,10 @@ def fetch_proxy_list():
         except Exception as e_direct:
             print(f"Direct fetch of proxy list from {url} failed: {e_direct}")
             
-        if not success:
+        if not success and proxy_handler:
             try:
-                print("Retrying proxy list fetch with local proxy...")
+                print("Retrying proxy list fetch with environment proxy...")
+                opener_proxy = urllib.request.build_opener(proxy_handler)
                 req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                 with opener_proxy.open(req, timeout=10) as resp:
                     content = resp.read().decode('utf-8')
@@ -277,8 +309,10 @@ def download_lignin():
     else:
         print("Failed to get redirect URL. Falling back to proxy chaining tunnel...")
 
-    local_host = "proxy.cnea.gob.ar"
-    local_port = 1280
+    local_host, local_port = get_proxy_host_port()
+    if not local_host or not local_port:
+        print("Direct download failed and no environment proxy (HTTP_PROXY/HTTPS_PROXY) is set for tunnel fallback.")
+        sys.exit(1)
 
     target_host = "s3q.ait.dtu.dk"
     target_port = 9000
