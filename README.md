@@ -31,7 +31,7 @@ The library is organized into two self-contained subpackages targeting distinct 
 ## 📁 Repository Structure
 
 ```
-pinn_parafac/
+petn_parafac/
 ├── data/
 │   ├── eem/                # EEM datasets (CDOM, Honey, Aminoacids, etc.)
 │   └── chroma/             # Chromatography datasets (GC-MS, HPLC-DAD)
@@ -48,12 +48,15 @@ pinn_parafac/
 │   │   ├── loss.py         # Custom masked MSE loss
 │   │   ├── generator.py    # Synthetic EEM dataset generator
 │   │   ├── train.py        # EEM training script
+│   │   ├── benchmark.py    # EEM comparative benchmark script
 │   │   └── README.md       # EEM-specific detailed documentation
 │   └── chroma/             # Chromatography Subpackage
 │       ├── __init__.py
 │       ├── model.py        # Chroma-PETN model with warping layer
 │       ├── generator.py    # Synthetic GC-MS/HPLC data simulator
-│       └── train.py        # Chromatography training script
+│       ├── train.py        # Chromatography training script
+│       ├── benchmark.py    # Chromatography benchmark script
+│       └── README.md       # Chromatography-specific detailed documentation
 ├── tests/
 │   ├── eem/                # EEM unit and import tests
 │   └── chroma/             # Chromatography unit and integration tests
@@ -64,17 +67,26 @@ pinn_parafac/
 
 ---
 
+## ⚡ Training Optimizations
+
+The chromatography subpackage supports three major performance optimizations to handle large-scale chemical datasets efficiently:
+1. **Dynamic Batch Size (Option 1)**: Supports coordinate-based training segmented in mini-batches to prevent GPU/CPU Out-Of-Memory (OOM) on very large coordinate lists.
+2. **Grid-Based Tensor Reconstruction (Option 2)**: Reconstructs predictions directly on the time/spectral grid using batched `einsum` and 1D Savitzky-Golay convolutions. Evaluates coordinate alignment equations only once per sample rather than per coordinate, speeding up training by **up to 250x** for derivative-based runs. Enabled by default (`batch_size=None`).
+3. **Model Graph Compilation (Option 3)**: Compiles the network graph with `torch.compile` where supported for optimal hardware performance. Enabled by default (`compile_model=True`).
+
+---
+
 ## 🛠️ Installation & Setup
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/DamianPiuselli/pinn_parafac.git
-   cd pinn_parafac
+   git clone https://github.com/DamianPiuselli/petn_parafac.git
+   cd petn_parafac
    ```
 
 2. **Activate the Conda environment or install requirements:**
    ```bash
-   conda activate pinn_parafac
+   conda activate petn_parafac
    # Or install via pip:
    pip install -r requirements.txt
    ```
@@ -83,16 +95,33 @@ pinn_parafac/
 
 ## 🏃 Quick Start
 
-### Running the EEM Benchmark
-To train the PETN-PARAFAC model on synthetic EEM data and compare it with traditional PARAFAC:
+### Running EEM Spectroscopy Benchmarks
+To train and validate on experimental/botanical datasets:
 ```bash
-python -m src.eem.benchmark
+# Copenhagen Honey benchmark
+PYTHONPATH=. python3 src/eem/train_honey.py
+
+# Experimental Amino Acids benchmark
+PYTHONPATH=. python3 src/eem/train_aminoacids.py
+
+# Comparative Monte Carlo run
+PYTHONPATH=. python3 src/eem/benchmark.py
 ```
 
-### Running the Chromatography Demo
-To train the Chroma-PETN model and verify retention time alignment recovery:
+### Running Chromatography Alignment Benchmarks
+To run the alignment benchmarks on simulated and real-world datasets:
 ```bash
-python -m src.chroma.train
+# Solidago Root Extracts benchmark (HPLC-DAD)
+PYTHONPATH=. python3 src/chroma/benchmark_solidago.py
+
+# Copenhagen Apple Wine benchmark (GC-MS)
+PYTHONPATH=. python3 src/chroma/benchmark_applewine.py
+
+# Lignin Phenols benchmark (HPLC-DAD, 13 components)
+PYTHONPATH=. python3 src/chroma/benchmark_lignin.py
+
+# UCPH Simulated GC-MS benchmark
+PYTHONPATH=. python3 src/chroma/benchmark_simulated.py
 ```
 
 ### Running Tests
@@ -100,3 +129,4 @@ To execute all test suites (covering both EEM and chromatography):
 ```bash
 pytest
 ```
+

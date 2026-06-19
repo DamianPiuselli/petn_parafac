@@ -133,23 +133,29 @@ petn_parafac/
 │   ├── aminoacids_resolved_profiles.png # Resolved spectra for the Amino Acids dataset
 │   ├── honey_resolved_profiles.png # Resolved loadings and molar absorptivities for honey
 │   └── honey_pca_separation.png   # PCA score clustering for botanical and adulteration classification
-├── src/
+src/
+├── common/
 │   ├── __init__.py
-│   ├── download_aminoacids.py     # Utility to download the Amino Acids dataset
-│   ├── download_honey.py          # Utility to download the Copenhagen Honey dataset
-│   ├── generator.py               # EEM synthetic generator with scatter & Lakowicz IFE
-│   ├── loss.py                    # Custom masked MSE loss implementation
-│   ├── model.py                   # PETNParafac custom model class in PyTorch
-│   ├── train.py                   # Synthetic pipeline training loop
-│   ├── train_aminoacids.py        # Experimental Amino Acids validation script
-│   ├── train_honey.py             # Copenhagen Honey validation and classifier script
 │   └── utils.py                   # Visualizations and plotting helpers
-├── tests/
-│   ├── test_generator.py          # Unit tests for the synthetic data generator
-│   ├── test_loss.py               # Unit tests for masked loss
-│   └── test_model.py              # Unit tests for PETN custom model
-├── requirements.txt               # Project python package requirements
-└── README.md                      # Project documentation
+└── eem/
+    ├── __init__.py
+    ├── benchmark.py               # EEM training benchmark script
+    ├── download_aminoacids.py     # Utility to download the Amino Acids dataset
+    ├── download_honey.py          # Utility to download the Copenhagen Honey dataset
+    ├── generator.py               # EEM synthetic generator with scatter & Lakowicz IFE
+    ├── loss.py                    # Custom masked MSE loss implementation
+    ├── model.py                   # PETNParafac custom model class in PyTorch
+    ├── train.py                   # Synthetic pipeline training loop
+    ├── train_aminoacids.py        # Experimental Amino Acids validation script
+    └── train_honey.py             # Copenhagen Honey validation and classifier script
+tests/
+└── eem/
+    ├── test_generator.py          # Unit tests for the synthetic data generator
+    ├── test_loss.py               # Unit tests for masked loss
+    └── test_model.py              # Unit tests for PETN custom model
+requirements.txt                   # Project python package requirements
+README.md                          # Project documentation
+
 ```
 
 ---
@@ -223,8 +229,9 @@ To apply `PETNParafac` to your custom dataset:
 ```python
 import torch
 import torch.optim as optim
-from src.model import PETNParafac
-from src.loss import masked_mse_loss
+from src.eem.model import PETNParafac
+from src.eem.loss import masked_mse_loss
+
 
 # 1. Define dimensions and spectral grids
 num_samples = 20

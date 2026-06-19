@@ -177,10 +177,12 @@ model = train_chroma_petn(
     num_segments=4,
     derivative_order=2,
     sg_window_size=15,
-    batch_size=50000,   # batch coordinates to prevent OOM
+    batch_size=None,      # None (default) for fast grid-based mode; specify int (e.g. 50000) for batched coordinates
+    compile_model=True,   # True (default) to compile the model graph using torch.compile
     tol=1e-6,
     patience=50
 )
+
 
 # Extract aligned profiles
 # model.sample_embeddings.weight -> Scores (A)
