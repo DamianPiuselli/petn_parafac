@@ -27,16 +27,18 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
     Returns:
         model: Trained ChromaPETN model instance
     """
-    X = torch.tensor(dataset['X'], dtype=torch.float32)
+    device = torch.device('cuda' if torch.cuda.is_available() else ('mps' if torch.backends.mps.is_available() else 'cpu'))
+    
+    X = torch.tensor(dataset['X'], dtype=torch.float32, device=device)
     I, J, K = X.shape
     
     # Instantiate model
-    model = ChromaPETN(num_samples=I, num_time=J, num_spec=K, num_components=3, warp_type=warp_type, num_segments=num_segments)
+    model = ChromaPETN(num_samples=I, num_time=J, num_spec=K, num_components=3, warp_type=warp_type, num_segments=num_segments).to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     
     # Generate complete coordinate triplets for full-batch training
     coords_i, coords_j, coords_k = torch.meshgrid(
-        torch.arange(I), torch.arange(J), torch.arange(K), indexing='ij'
+        torch.arange(I, device=device), torch.arange(J, device=device), torch.arange(K, device=device), indexing='ij'
     )
     coords_i = coords_i.flatten()
     coords_j = coords_j.flatten()

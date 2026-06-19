@@ -88,7 +88,8 @@ def match_and_align_profiles(A_pred, C_pred, A_true, C_true, B_pred=None):
     return res
 
 def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coef=0.001, warp_type='linear', num_segments=4, derivative_order=0, sg_window_size=11, batch_size=50000, tol=1e-6, patience=50):
-    X_tensor = torch.tensor(X, dtype=torch.float32)
+    device = torch.device('cuda' if torch.cuda.is_available() else ('mps' if torch.backends.mps.is_available() else 'cpu'))
+    X_tensor = torch.tensor(X, dtype=torch.float32, device=device)
     I, J, K = X_tensor.shape
     
     model = ChromaPETN(
@@ -100,11 +101,11 @@ def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coe
         num_segments=num_segments,
         derivative_order=derivative_order,
         sg_window_size=sg_window_size
-    )
+    ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     
     coords_i, coords_j, coords_k = torch.meshgrid(
-        torch.arange(I), torch.arange(J), torch.arange(K), indexing='ij'
+        torch.arange(I, device=device), torch.arange(J, device=device), torch.arange(K, device=device), indexing='ij'
     )
     coords_i = coords_i.flatten()
     coords_j = coords_j.flatten()
@@ -113,7 +114,7 @@ def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coe
     if derivative_order > 0:
         from scipy.signal import savgol_filter
         X_deriv = savgol_filter(X, window_length=sg_window_size, polyorder=2, deriv=derivative_order, axis=1)
-        y_target = torch.tensor(X_deriv, dtype=torch.float32)[coords_i, coords_j, coords_k]
+        y_target = torch.tensor(X_deriv, dtype=torch.float32, device=device)[coords_i, coords_j, coords_k]
     else:
         y_target = X_tensor[coords_i, coords_j, coords_k]
         

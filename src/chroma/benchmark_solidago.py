@@ -20,14 +20,15 @@ def calculate_cosine_similarity(v1, v2):
     return np.max([np.dot(v1_norm, v2_norm), np.dot(v1_norm, -v2_norm)])
 
 def train_chroma_petn_fast(X, num_components, epochs=800, lr=0.015, warp_reg_coef=0.001, warp_type='linear', num_segments=4, tol=1e-6, patience=50):
-    X_tensor = torch.tensor(X, dtype=torch.float32)
+    device = torch.device('cuda' if torch.cuda.is_available() else ('mps' if torch.backends.mps.is_available() else 'cpu'))
+    X_tensor = torch.tensor(X, dtype=torch.float32, device=device)
     I, J, K = X_tensor.shape
     
-    model = ChromaPETN(num_samples=I, num_time=J, num_spec=K, num_components=num_components, warp_type=warp_type, num_segments=num_segments)
+    model = ChromaPETN(num_samples=I, num_time=J, num_spec=K, num_components=num_components, warp_type=warp_type, num_segments=num_segments).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     
     coords_i, coords_j, coords_k = torch.meshgrid(
-        torch.arange(I), torch.arange(J), torch.arange(K), indexing='ij'
+        torch.arange(I, device=device), torch.arange(J, device=device), torch.arange(K, device=device), indexing='ij'
     )
     coords_i = coords_i.flatten()
     coords_j = coords_j.flatten()
