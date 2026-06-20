@@ -51,4 +51,27 @@ def test_chroma_training_coordinate_and_compile():
     assert model_compile is not None
 
 
+def test_chroma_training_hybrid():
+    # Generate a tiny dataset
+    gen = ChromatographicDataGenerator(num_samples=4, num_time=20, num_spec=15, num_components=3, seed=123)
+    dataset = gen.generate_dataset(noise_std=0.01, max_shift=0.02, max_stretch=0.03)
+    
+    # Train in grid mode with hybrid loss
+    model_grid = train_chroma_petn(
+        dataset, epochs=5, lr=0.05, warp_reg_coef=0.001,
+        derivative_order=1, sg_window_size=5, sg_polyorder=2,
+        lambda_raw=1.0, lambda_smooth_B=0.01, compile_model=False
+    )
+    assert model_grid is not None
+    
+    # Train in coordinate mode with hybrid loss
+    model_coord = train_chroma_petn(
+        dataset, epochs=5, lr=0.05, warp_reg_coef=0.001,
+        derivative_order=1, sg_window_size=5, sg_polyorder=2,
+        lambda_raw=1.0, lambda_smooth_B=0.01, batch_size=200, compile_model=False
+    )
+    assert model_coord is not None
+
+
+
 

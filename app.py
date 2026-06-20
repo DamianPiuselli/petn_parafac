@@ -12,7 +12,8 @@ from src.eem.loss import masked_mse_loss
 from src.eem.train import match_and_align_components
 
 from src.chroma.generator import ChromatographicDataGenerator
-from src.chroma.model import ChromaPETN
+from src.chroma import HPLC_PETN
+
 
 # --- Helper functions ---
 def calculate_cosine_similarity(v1, v2):
@@ -645,7 +646,7 @@ else:
         st.session_state.chroma_lr_in_state = chroma_lr
         
         generator = st.session_state.generator
-        st.session_state.model = ChromaPETN(
+        st.session_state.model = HPLC_PETN(
             num_samples=generator.num_samples,
             num_time=generator.num_time,
             num_spec=generator.num_spec,
@@ -656,10 +657,11 @@ else:
             sg_window_size=sg_w
         )
         if chroma_model_arch == "Pure PARAFAC":
-            st.session_state.model.warp_stretch.data.fill_(0.0)
-            st.session_state.model.warp_shift.data.fill_(0.0)
-            st.session_state.model.warp_stretch.requires_grad = False
-            st.session_state.model.warp_shift.requires_grad = False
+            st.session_state.model.alpha_params.data.fill_(0.0)
+            st.session_state.model.beta_params.data.fill_(0.0)
+            st.session_state.model.alpha_params.requires_grad = False
+            st.session_state.model.beta_params.requires_grad = False
+
             
         st.session_state.optimizer = optim.Adam(st.session_state.model.parameters(), lr=chroma_lr)
         st.session_state.epoch = 0
@@ -811,7 +813,7 @@ def action_generate_dataset():
         sg_w = chroma_sg_window_size if chroma_enable_deriv else 11
         current_warp = chroma_warp_type if chroma_model_arch == "Chroma-PETN" else "linear"
         
-        model = ChromaPETN(
+        model = HPLC_PETN(
             num_samples=generator.num_samples,
             num_time=generator.num_time,
             num_spec=generator.num_spec,
@@ -823,10 +825,11 @@ def action_generate_dataset():
         )
         
         if chroma_model_arch == "Pure PARAFAC":
-            model.warp_stretch.data.fill_(0.0)
-            model.warp_shift.data.fill_(0.0)
-            model.warp_stretch.requires_grad = False
-            model.warp_shift.requires_grad = False
+            model.alpha_params.data.fill_(0.0)
+            model.beta_params.data.fill_(0.0)
+            model.alpha_params.requires_grad = False
+            model.beta_params.requires_grad = False
+
             
         optimizer = optim.Adam(model.parameters(), lr=chroma_lr)
         st.session_state.chroma_model_arch_in_state = chroma_model_arch
@@ -868,10 +871,11 @@ def action_reset_solver():
         st.session_state.optimizer = optim.Adam(st.session_state.model.parameters(), lr=lr)
     else:
         if chroma_model_arch == "Pure PARAFAC":
-            st.session_state.model.warp_stretch.data.fill_(0.0)
-            st.session_state.model.warp_shift.data.fill_(0.0)
-            st.session_state.model.warp_stretch.requires_grad = False
-            st.session_state.model.warp_shift.requires_grad = False
+            st.session_state.model.alpha_params.data.fill_(0.0)
+            st.session_state.model.beta_params.data.fill_(0.0)
+            st.session_state.model.alpha_params.requires_grad = False
+            st.session_state.model.beta_params.requires_grad = False
+
         st.session_state.optimizer = optim.Adam(st.session_state.model.parameters(), lr=chroma_lr)
         
     st.session_state.aligned_A = None
@@ -998,13 +1002,14 @@ def run_chroma_training_step(num_epochs, lr_val, model_arch):
         loss_mse = torch.nn.functional.mse_loss(y_pred, y_target)
         
         if model.warp_type == 'linear':
-            loss_warp_reg = chroma_warp_reg_coef * (torch.mean(model.warp_stretch**2) + torch.mean(model.warp_shift**2))
+            loss_warp_reg = chroma_warp_reg_coef * (torch.mean(model.alpha_params**2) + torch.mean(model.beta_params**2))
         elif model.warp_type == 'quadratic':
-            loss_warp_reg = chroma_warp_reg_coef * (torch.mean(model.warp_alpha**2) + torch.mean(model.warp_beta**2) + torch.mean(model.warp_gamma**2))
+            loss_warp_reg = chroma_warp_reg_coef * (torch.mean(model.alpha_params**2) + torch.mean(model.beta_params**2) + torch.mean(model.gamma_params**2))
         elif model.warp_type == 'spline':
-            loss_warp_reg = chroma_warp_reg_coef * (torch.mean(model.warp_shift**2) + torch.mean(model.warp_log_increments**2))
+            loss_warp_reg = chroma_warp_reg_coef * (torch.mean(model.beta_params**2) + torch.mean(model.log_increments_params**2))
         else:
             loss_warp_reg = torch.tensor(0.0)
+
             
         loss = loss_mse + loss_warp_reg
         loss.backward()
@@ -1660,23 +1665,24 @@ else:
                     true_diff = t_true_warped - t_obs
                     
                     if model.warp_type == 'linear':
-                        stretch_pred = model.warp_stretch[i].item()
-                        shift_pred = model.warp_shift[i].item()
+                        stretch_pred = model.alpha_params[i].mean().item()
+                        shift_pred = model.beta_params[i].mean().item()
                         t_pred_warped = t_obs - (stretch_pred * t_obs + shift_pred)
                     elif model.warp_type == 'quadratic':
-                        alpha_pred = model.warp_alpha[i].item()
-                        beta_pred = model.warp_beta[i].item()
-                        gamma_pred = model.warp_gamma[i].item()
+                        alpha_pred = model.alpha_params[i].mean().item()
+                        beta_pred = model.beta_params[i].mean().item()
+                        gamma_pred = model.gamma_params[i].mean().item()
                         t_pred_warped = t_obs - (alpha_pred * (t_obs**2) + beta_pred * t_obs + gamma_pred)
                     elif model.warp_type == 'spline':
-                        shift_pred = model.warp_shift[i].item()
-                        log_inc_pred = model.warp_log_increments[i].detach().cpu().numpy()
+                        shift_pred = model.beta_params[i].mean().item()
+                        log_inc_pred = model.log_increments_params[i].mean(dim=-1).detach().cpu().numpy()
                         inc_pred = (1.0 / model.num_segments) * np.exp(log_inc_pred)
                         w_pred = shift_pred + np.cumsum(np.concatenate([[0.0], inc_pred]))
                         val = t_obs * model.num_segments
                         k = np.clip(np.floor(val).astype(int), 0, model.num_segments - 1)
                         u = val - k
                         t_pred_warped = (1.0 - u) * w_pred[k] + u * w_pred[k + 1]
+
                         
                     pred_diff = t_pred_warped - t_obs
                     

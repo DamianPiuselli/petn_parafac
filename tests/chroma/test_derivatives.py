@@ -2,7 +2,7 @@ import pytest
 import torch
 import numpy as np
 from scipy.signal import savgol_coeffs
-from src.chroma.model import ChromaPETN
+from src.chroma import HPLC_PETN
 
 def test_sg_coefficients():
     """Verify that model's registered SG kernel matches SciPy exactly."""
@@ -10,7 +10,7 @@ def test_sg_coefficients():
     polyorder = 2
     deriv = 2
     
-    model = ChromaPETN(
+    model = HPLC_PETN(
         num_samples=5,
         num_time=100,
         num_spec=50,
@@ -20,7 +20,7 @@ def test_sg_coefficients():
         sg_polyorder=polyorder
     )
     
-    expected_coeffs = savgol_coeffs(window_size, polyorder, deriv=deriv)
+    expected_coeffs = savgol_coeffs(window_size, polyorder, deriv=deriv)[::-1]
     registered_coeffs = model.sg_kernel.cpu().numpy().flatten()
     
     np.testing.assert_allclose(registered_coeffs, expected_coeffs, rtol=1e-6)
@@ -32,7 +32,7 @@ def test_derivative_order_zero_identity():
     num_spec = 20
     num_components = 2
     
-    model = ChromaPETN(
+    model = HPLC_PETN(
         num_samples=num_samples,
         num_time=num_time,
         num_spec=num_spec,
@@ -44,9 +44,10 @@ def test_derivative_order_zero_identity():
     time_idx = torch.randint(0, num_time, (100,))
     spec_idx = torch.randint(0, num_spec, (100,))
     
-    # Check that it uses _forward_raw
+    # Check that it matches raw trilinear coordinate-based formula
     y_pred = model(sample_idx, time_idx, spec_idx)
-    y_raw = model._forward_raw(sample_idx, time_idx, spec_idx)
+    a, b, c = model._forward_raw_coo(sample_idx, time_idx, spec_idx)
+    y_raw = torch.sum(a * b * c, dim=1)
     
     torch.testing.assert_close(y_pred, y_raw)
 
@@ -57,7 +58,7 @@ def test_gradient_flow():
     num_spec = 20
     num_components = 2
     
-    model = ChromaPETN(
+    model = HPLC_PETN(
         num_samples=num_samples,
         num_time=num_time,
         num_spec=num_spec,
@@ -77,20 +78,20 @@ def test_gradient_flow():
     loss.backward()
     
     # Assert gradients exist and are non-zero
-    assert model.sample_embeddings.weight.grad is not None
-    assert torch.sum(torch.abs(model.sample_embeddings.weight.grad)) > 0.0
+    assert model.A.grad is not None
+    assert torch.sum(torch.abs(model.A.grad)) > 0.0
     
-    assert model.time_embeddings.weight.grad is not None
-    assert torch.sum(torch.abs(model.time_embeddings.weight.grad)) > 0.0
+    assert model.B.grad is not None
+    assert torch.sum(torch.abs(model.B.grad)) > 0.0
     
-    assert model.spec_embeddings.weight.grad is not None
-    assert torch.sum(torch.abs(model.spec_embeddings.weight.grad)) > 0.0
+    assert model.C.grad is not None
+    assert torch.sum(torch.abs(model.C.grad)) > 0.0
     
-    assert model.warp_stretch.grad is not None
-    assert torch.sum(torch.abs(model.warp_stretch.grad)) > 0.0
+    assert model.alpha.grad is not None
+    assert torch.sum(torch.abs(model.alpha.grad)) > 0.0
     
-    assert model.warp_shift.grad is not None
-    assert torch.sum(torch.abs(model.warp_shift.grad)) > 0.0
+    assert model.beta.grad is not None
+    assert torch.sum(torch.abs(model.beta.grad)) > 0.0
 
 def test_boundary_clamping():
     """Verify that the model handles boundary time steps (0 and num_time-1) without crashing."""
@@ -98,7 +99,7 @@ def test_boundary_clamping():
     num_time = 10
     num_spec = 5
     
-    model = ChromaPETN(
+    model = HPLC_PETN(
         num_samples=num_samples,
         num_time=num_time,
         num_spec=num_spec,

@@ -27,22 +27,21 @@ The library does not use soft loss penalties; it embeds physical laws directly i
 * **Custom Masked Loss (Scattering Constraint):** Gradients are multiplied by a binary mask ($W$) which equals `0` on scattering diagonals and `1` elsewhere. The model is blinded to scattering zones, forcing the trilinear core to interpolate the true chemical signal underneath.
 
 #### B. Chroma-PETN: Chromatography Alignment
-* **Input Layer:** Accepts coordinate triplets: `[sample_idx, time_idx, spectral_idx]`.
-* **White-Box Core (Trilinear & Warped Constraints):** Maps inputs to Score ($A$), Aligned Chromatography ($B$), and Spectral ($C$) non-negative embeddings.
-* **Differentiable Warping Head:** Computes continuous warped time coordinates for sample $i$ at normalized time $t$:
-  $$t'_{i, j} = t_j - (\alpha_i \cdot t_j + \beta_i)$$
-  where $\alpha_i$ (stretch) and $\beta_i$ (shift) are sample-specific warping parameters.
-* **Differentiable 1D Interpolation:** Evaluates the canonical peak shape embedding $B$ at the continuous coordinate $t'_{i, j}$ using linear interpolation. This allows gradients to flow directly to the alignment parameters and reference peak shapes.
-* **Mean-Centering Constraint:** Enforces $\sum \alpha_i = 0$ and $\sum \beta_i = 0$ at the end of every optimization step. This removes shift-translation and scaling ambiguities, anchoring the canonical profile coordinates.
+* **Input Layer**: Accepts coordinate triplets `[sample_idx, time_idx, spectral_idx]` or evaluates dense 3D blocks.
+* **White-Box Core**: Maps inputs to Score ($A$), Aligned Chromatography ($B$), and Spectral ($C$) non-negative embeddings.
+* **Differentiable Warping Head**: Computes continuous warped time coordinates for sample $i$ and component $r$ at normalized time $t$:
+  $$t'_{i, j, r} = t_j - \text{warp\_function}(t_j, \mathbf{\theta}_{i, r})$$
+  Supports linear, quadratic, and spline warping functions with component-specific parameters $\mathbf{\theta}_{i, r}$.
+* **Differentiable 1D Interpolation with Area Preservation**: Interpolates the canonical profile embedding $B$ at $t'_{i, j, r}$ and multiplies by the warping Jacobian to preserve peak area under stretching.
+* **Mean-Centering Constraint**: Enforces warp shift and stretch parameters to center to zero independently across the component axis to remove translation and scaling ambiguities.
+* **Technique Subclasses**:
+  * **HPLC**: Modeled continuously; incorporates trainable baseline offset parameters and Savitzky-Golay derivative filters.
+  * **GC-MS**: Modeled sparsely; incorporates masked losses, spectral L1 sparsity, and sample-specific residual shape matrices ($\Delta B_i$) to handle severe column overloading.
 
 ### CURRENT WORKING BACKLOG:
 * **EEM Spectroscopy Track:**
-  * Phase 4 (Deployment): Validation using open-access benchmarks (e.g., Copenhagen Honey/Micropollutants datasets).
-  * Phase 5 (Extensions): Semi-supervised standard constraints & frozen inference projection for new unknown samples.
+  * *(Backlog is currently empty - pending next phase of changes)*
 * **Chromatography Track:**
-  * Phase 1 (MVP - Completed): Prototype linear warping model and validation on synthetic GC-MS shifts showing $100\%$ recovery.
-  * Phase 2 (Non-Linear Upgrade): Implement quadratic and piecewise linear spline warping heads to handle gradient elution chromatograms.
-  * Phase 3 (Real-World Deployment): Validation using standard PAH or organic acid HPLC-DAD datasets.
-  * Phase 4 (Peak Identification): Integrate a spectral database mapping layer to automatically identify components during training.
+  * *(Backlog is currently empty - pending next phase of changes)*
 
 When generating code, architectures, or training loops, ensure all physical constraints are hardcoded into the layers and loss functions as specified above.

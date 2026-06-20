@@ -4,6 +4,7 @@ Provides helpers for coordinate conversion, plotting EEM surfaces, and resolved 
 """
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
 def plot_resolved_vs_true_profiles(true_B, true_C, pred_B, pred_C, ex_wavelens, em_wavelens, save_path=None):
     """
@@ -391,6 +392,128 @@ def plot_scores_parity(true_A, pred_A, num_calib=5, components_to_plot=None, com
     else:
         plt.show()
     plt.close()
+
+def plot_scores_comparison(A_true, A_pred, component_names=None, save_path=None):
+    """
+    Plots true vs. predicted scores (concentrations) for each component.
+    Plots a 1:1 diagonal line and calculates correlation R2 and similarity scores.
+    
+    Args:
+        A_true: shape (num_samples, num_components)
+        A_pred: shape (num_samples, num_components)
+        component_names: list of component names (length num_components)
+        save_path: path to save the generated image, or None to display it.
+    """
+    import os
+    num_components = A_true.shape[1]
+    fig, axes = plt.subplots(1, num_components, figsize=(5 * num_components, 4.5))
+    if num_components == 1:
+        axes = [axes]
+        
+    for r in range(num_components):
+        ax = axes[r]
+        y_true = A_true[:, r]
+        y_pred = A_pred[:, r]
+        
+        # Calculate R^2 and correlation
+        corr = np.corrcoef(y_true, y_pred)[0, 1]
+        r2 = corr ** 2 if not np.isnan(corr) else 0.0
+        
+        # Calculate cosine similarity
+        v1_norm = y_true / (np.linalg.norm(y_true) + 1e-10)
+        v2_norm = y_pred / (np.linalg.norm(y_pred) + 1e-10)
+        cos_sim = np.dot(v1_norm, v2_norm)
+        
+        # Scatter plot
+        ax.scatter(y_true, y_pred, color='#1f77b4', edgecolors='k', s=80, alpha=0.8, zorder=3)
+        
+        # 1:1 diagonal line
+        min_val = min(np.min(y_true), np.min(y_pred))
+        max_val = max(np.max(y_true), np.max(y_pred))
+        margin = (max_val - min_val) * 0.1 if max_val > min_val else 0.1
+        line_range = np.linspace(min_val - margin, max_val + margin, 100)
+        ax.plot(line_range, line_range, color='gray', linestyle='--', alpha=0.7, label='1:1 Line', zorder=2)
+        
+        comp_name = component_names[r] if component_names is not None else f'Component {r+1}'
+        ax.set_title(f'{comp_name}\nSimilarity: {cos_sim:.4f} | R² = {r2:.4f}', fontsize=12, fontweight='bold')
+        ax.set_xlabel('True Score (Concentration)', fontsize=10)
+        ax.set_ylabel('Predicted Score (Concentration)', fontsize=10)
+        ax.set_xlim(min_val - margin, max_val + margin)
+        ax.set_ylim(min_val - margin, max_val + margin)
+        ax.grid(True, linestyle=':', alpha=0.6, zorder=1)
+        ax.legend(loc='upper left')
+        
+    plt.tight_layout()
+    if save_path:
+        dir_name = os.path.dirname(os.path.abspath(save_path))
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Diagnostics: Scores comparison plot saved to: {save_path}")
+    else:
+        plt.show()
+    plt.close()
+
+class EarlyStopping:
+    """
+    Scale-independent Early Stopping monitor.
+    Uses Fraction of Variance Unexplained (FVU = MSE / Var(y)) to normalize loss across scales,
+    and monitors relative improvement to prevent premature stopping on slow learning phases.
+    """
+    def __init__(self, patience=50, tol=1e-5, min_epochs=50):
+        self.patience = patience
+        self.tol = tol
+        # Allow min_epochs to adapt if patience is small (for testing)
+        self.min_epochs = max(0, min(min_epochs, patience - 1))
+        
+        self.best_loss = float('inf')
+        self.patience_counter = 0
+        self.var_y = None
+        
+    def __call__(self, epoch, loss_val, y_target):
+        # 1. Initialize variance of target to normalize loss (scale independence)
+        if self.var_y is None:
+            if isinstance(y_target, torch.Tensor):
+                self.var_y = torch.var(y_target).item()
+            else:
+                self.var_y = np.var(y_target)
+                
+            if self.var_y < 1e-10:
+                self.var_y = 1.0  # Avoid division by zero for constant target
+                
+        # 2. Compute Fraction of Variance Unexplained (FVU)
+        fvu = loss_val / self.var_y
+        
+        # 3. Check for hard scale-independent convergence (R² > 99.9999%)
+        if fvu < 1e-6:
+            print(f"Convergence reached at epoch {epoch:4d} (Loss < target threshold). Final loss: {loss_val:.3e}")
+            return True
+            
+        if epoch < self.min_epochs:
+            # Update best loss during warmup period without checking patience
+            if loss_val < self.best_loss:
+                self.best_loss = loss_val
+            return False
+            
+        # 4. Check relative improvement
+        # We require a relative decrease of at least `tol` (e.g. 1e-5)
+        improvement = (self.best_loss - loss_val) / (self.best_loss + 1e-10)
+        
+        if improvement > self.tol:
+            self.best_loss = loss_val
+            self.patience_counter = 0  # Significant improvement, reset patience
+        else:
+            if loss_val < self.best_loss:
+                self.best_loss = loss_val  # Update baseline, but don't reset patience
+            self.patience_counter += 1
+            
+        if self.patience_counter >= self.patience:
+            print(f"Early stopping at epoch {epoch:4d} (Loss did not decrease significantly for {self.patience} epochs). Final loss: {loss_val:.3e}")
+            return True
+            
+        return False
+
+
 
 
 

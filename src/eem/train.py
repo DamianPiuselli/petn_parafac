@@ -12,6 +12,8 @@ from scipy.optimize import linear_sum_assignment
 from src.eem.generator import EEMGenerator
 from src.eem.model import PETNParafac
 from src.eem.loss import masked_mse_loss
+from src.common.utils import EarlyStopping
+
 
 class EEMDataset(Dataset):
     """
@@ -176,7 +178,7 @@ def match_and_align_components(true_A, true_B, true_C, pred_A, pred_B, pred_C):
     }
 
 
-def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
+def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43, patience=150, tol=1e-5):
     """
     Runs the full Phase 3 training pipeline:
     1. Generates synthetic EEM data with combined scattering and IFE.
@@ -245,6 +247,8 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
     
     # 3. Training loop
     print(f"Training model in full-batch mode for {epochs} epochs...")
+    early_stopping = EarlyStopping(patience=patience, tol=tol, min_epochs=100)
+    
     for epoch in range(1, epochs + 1):
         model.train()
         optimizer.zero_grad()
@@ -258,8 +262,12 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
         # Enforce positive constraints
         model.project_constraints()
         
+        loss_val = loss.item()
+        if early_stopping(epoch, loss_val, intensities):
+            break
+            
         if epoch % 300 == 0 or epoch == 1:
-            print(f"Epoch {epoch:04d}/{epochs} - Loss: {loss.item():.6f}")
+            print(f"Epoch {epoch:04d}/{epochs} - Loss: {loss_val:.6f}")
             
     # 4. Extract trained weights
     model.eval()
@@ -284,8 +292,11 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
     aligned_M = pred_M[:, pred_ind]
     for r in range(generator.num_components):
         s_r = s_factors[r]
-        aligned_E[:, r] = aligned_E[:, r] / s_r
-        aligned_M[:, r] = aligned_M[:, r] / s_r
+        # pred_ind[r] is the predicted component index matched to true component r
+        max_c = np.max(pred_C[:, pred_ind[r]])
+        max_c = max_c if max_c > 1e-8 else 1.0
+        aligned_E[:, r] = aligned_E[:, r] / (s_r * max_c)
+        aligned_M[:, r] = aligned_M[:, r] / (s_r * max_c)
         
     # Compute R^2 metrics for resolved absorptivities
     r2_E = []
@@ -305,7 +316,12 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
     metrics['r2_M'] = r2_M
     
     # 7. Save comparison plots
-    from src.common.utils import plot_resolved_vs_true_profiles, plot_eem_heatmaps, plot_resolved_absorptivities
+    from src.common.utils import (
+        plot_resolved_vs_true_profiles,
+        plot_eem_heatmaps,
+        plot_resolved_absorptivities,
+        plot_scores_comparison
+    )
     plot_resolved_vs_true_profiles(
         true_B, true_C, aligned_B, aligned_C,
         generator.ex_wavelens, generator.em_wavelens,
@@ -316,6 +332,14 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
         E_true, M_true, aligned_E, aligned_M,
         generator.ex_wavelens, generator.em_wavelens,
         save_path='notebooks/eem/phase3_resolved_absorptivities.png'
+    )
+    
+    # Save scores comparison plot
+    fluorophore_names = [f"Fluorophore Component {r+1}" for r in range(generator.num_components)]
+    plot_scores_comparison(
+        true_A, aligned_A,
+        component_names=fluorophore_names,
+        save_path='notebooks/eem/scores_comparison.png'
     )
     
     # Calculate reconstructed observed EEM for heatmap display
@@ -336,6 +360,54 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43):
         em_wavelens=generator.em_wavelens,
         save_path='notebooks/eem/phase3_eem_heatmaps.png'
     )
+    
+    # Write report.md
+    a_sims = [np.corrcoef(true_A[:, r], aligned_A[:, r])[0, 1] for r in range(generator.num_components)]
+    b_sims = [np.corrcoef(true_B[:, r], aligned_B[:, r])[0, 1] for r in range(generator.num_components)]
+    c_sims = [np.corrcoef(true_C[:, r], aligned_C[:, r])[0, 1] for r in range(generator.num_components)]
+    
+    report_content = f"""# EEM-PETN Model Calibration & Recovery Report
+
+## 1. Summary of Recovered Component Loadings & Absorptivities
+Below are the recovery metrics (R² scores and Cosine Similarities) between the ground truth and EEM-PETN resolved profiles for each of the {generator.num_components} chemical components.
+
+| Component | Fluorophore Label | Score (A) R² | Score (A) CosSim | Excitation (B) R² | Excitation (B) CosSim | Emission (C) R² | Emission (C) CosSim | Excitation Abs (E) R² | Emission Abs (M) R² |
+|---|---|---|---|---|---|---|---|---|---|
+"""
+    for r in range(generator.num_components):
+        a_r2 = metrics['r2_A'][r]
+        a_sim = a_sims[r]
+        b_r2 = metrics['r2_B'][r]
+        b_sim = b_sims[r]
+        c_r2 = metrics['r2_C'][r]
+        c_sim = c_sims[r]
+        e_r2 = metrics['r2_E'][r]
+        m_r2 = metrics['r2_M'][r]
+        lbl = fluorophore_names[r]
+        report_content += f"| **Component {r+1}** | {lbl} | {a_r2:.6f} | {a_sim:.6f} | {b_r2:.6f} | {b_sim:.6f} | {c_r2:.6f} | {c_sim:.6f} | {e_r2:.6f} | {m_r2:.6f} |\n"
+        
+    report_content += f"""
+### Key Averages:
+- **Average Concentration Score R² (A):** {np.mean(metrics['r2_A']):.6f}
+- **Average Excitation Loading R² (B):** {np.mean(metrics['r2_B']):.6f}
+- **Average Emission Loading R² (C):** {np.mean(metrics['r2_C']):.6f}
+- **Average Excitation Absorptivity R² (E):** {np.mean(metrics['r2_E']):.6f}
+- **Average Emission Absorptivity R² (M):** {np.mean(metrics['r2_M']):.6f}
+
+## 2. Visualization Artifacts
+The following plots have been generated and saved to the EEM output folder:
+1. **[Resolved Profiles](phase3_resolved_profiles.png)**: Overlays true vs. recovered excitation (B) and emission (C) profiles.
+2. **[Resolved Absorptivities](phase3_resolved_absorptivities.png)**: Overlays true vs. recovered excitation (E) and emission (M) molar absorptivity curves.
+3. **[EEM Heatmaps](phase3_eem_heatmaps.png)**: Visualizes the true EEM, corrupted EEM, scatter mask, and reconstructed EEM.
+4. **[Scores Comparison](scores_comparison.png)**: Parity plots of true vs. predicted concentrations (scores) with a 1:1 diagonal reference.
+"""
+    
+    import os
+    report_path = 'notebooks/eem/report.md'
+    os.makedirs(os.path.dirname(report_path), exist_ok=True)
+    with open(report_path, 'w') as f:
+        f.write(report_content)
+    print(f"Diagnostics: EEM Report written to: {report_path}")
     
     # 8. Print and return metrics
     print("\n--- Model Evaluation Results ---")
