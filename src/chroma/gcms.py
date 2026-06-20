@@ -34,7 +34,7 @@ class GCMS_PETN(BaseChromaPETN):
         a, b_warped, c = self._forward_raw_coo(sample_idx, time_idx, spec_idx)
         # Add residual shape offset delta_B[i, j, r]
         delta_B_val = self.delta_B[sample_idx, time_idx]  # (BatchSize, num_components)
-        b_warped_final = b_warped + delta_B_val
+        b_warped_final = torch.clamp(b_warped + delta_B_val, min=0)  # Ensure non-negativity
         return torch.sum(a * b_warped_final * c, dim=1)
 
     def forward_grid(self):
@@ -43,7 +43,7 @@ class GCMS_PETN(BaseChromaPETN):
         """
         A, B_warped, C = self._forward_raw_grid()
         # Add residual shape offset delta_B to aligned chromatography profile
-        b_warped_final = B_warped + self.delta_B  # (num_samples, num_time, num_components)
+        b_warped_final = torch.clamp(B_warped + self.delta_B, min=0)  # (num_samples, num_time, num_components)
         return torch.einsum('ir,ijr,kr->ijk', A, b_warped_final, C)
 
     def calculate_loss(self, X_pred, X_true):
