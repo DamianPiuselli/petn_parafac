@@ -115,13 +115,27 @@ $$\hat{y}^{(d)}_{\text{obs}}(i, j, k) = \sum_{m=-M}^M c_m^{(d)} \cdot \hat{y}_{\
 
 This lets gradients flow end-to-end through the derivative filter back to the warping parameters and canonical profiles, resolving baseline drift natively inside the computational graph.
 
-### Variance-Scaled Early Stopping & Scientific Logging
+### Variance-Scaled Early Stopping
 
 To handle amplitude-dampened data scales (like second-derivatives where signal variance $\sigma^2_y$ is of order $10^{-7}$), absolute convergence thresholds fail. Chroma-PETN implements a variance-scaled early stopping algorithm:
 
 * **Convergence Trigger:** Training terminates if the reconstruction loss falls below $10^{-7}$ or $10^{-5} \cdot \sigma^2_y$.
 * **Significance Check:** An improvement in loss qualifies only if the absolute change $\Delta\text{MSE} > \text{tol} \cdot \sigma^2_y$ and the relative change exceeds `tol`.
-* **Logging:** Output values are printed using scientific notation (`%.3e`) to prevent round-off display ambiguity.
+
+### Technique-Specific Loss Architectures (HPLC-DAD vs. GC-MS)
+
+Chromatographic alignment differs physically between HPLC-DAD and GC-MS, which is reflected in their respective loss designs:
+
+* **HPLC-DAD (Dense continuous bands & baseline drift):**
+  * **Objective:** Resolves highly overlapping, continuous, and baseline-drifted peaks.
+  * **Loss Function:** Evaluates a standard **Dense MSE** loss directly on the analytical derivatives (Savitzky-Golay filtered signals). Since the background contains solvent gradients or drifts, training on derivatives naturally removes baseline drift.
+  
+* **GC-MS (Sparse fragmentation & column overloading):**
+  * **Objective:** Resolves discrete mass-to-charge ($m/z$) fragmentation peaks and severe peak distortion/overloading.
+  * **Loss Function:** Combines three terms:
+    1. **Masked MSE Loss:** Gradients are only computed on non-zero regions (`X_true > 0`) of the sparse 3D tensor to ignore background noise and empty channels.
+    2. **Spectral $L_1$ Sparsity:** Applies an $L_1$ penalty to the spectrum matrix ($C$) to enforce sparse, clean fragmentation patterns (consistent with chemical library matches).
+    3. **Residual Shape Penalty ($L_2$):** Penalizes sample-specific chromatography shape residuals ($\Delta B_i$) with a heavy $L_2$ penalty. This accommodates columns undergoing severe overloading/skew without losing the alignment constraints of the canonical peak $B$.
 
 ### SVD Warm-Start Initialization
 Analytical chromatography models are notoriously sensitive to initialization because random starting profiles (random noise) cause the warping head to attempt to align static noise, locking the network into local minima. Chroma-PETN incorporates an unfolded **Truncated SVD** warm-start utility:
