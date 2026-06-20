@@ -73,9 +73,6 @@ class BaseChromaPETN(nn.Module, ABC):
         self.B.clamp_(min=0.0)
         self.C.clamp_(min=0.0)
         
-        # Enforce that canonical elution profiles touch zero concentration at baseline
-        self.B.data -= self.B.data.min(dim=0, keepdim=True).values
-        
         
         # B. Center and clamp warping parameters to resolve translation/scaling degeneracies
         if self.warp_type == 'linear':
