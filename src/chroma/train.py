@@ -17,7 +17,7 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
                       num_segments=4, tol=1e-6, patience=50, num_components=3,
                       derivative_order=0, sg_window_size=11, sg_polyorder=2, batch_size=None,
                       compile_model=True, threshold=None, lambda_res=10.0, lambda_c=1e-4,
-                      lambda_raw=0.0, lambda_smooth_B=0.0, model_type=None):
+                      lambda_raw=0.0, lambda_smooth_B=0.0, model_type=None, init_svd=True):
     """
     Trains the Chroma-PETN model on the provided dataset.
     """
@@ -70,6 +70,10 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
 
+    # Warm-start embedding tables using Truncated SVD if enabled
+    if init_svd:
+        print("Warm-starting embedding tables using Truncated SVD...")
+        model.init_from_svd(X)
 
     # Compile model graph
     if compile_model:

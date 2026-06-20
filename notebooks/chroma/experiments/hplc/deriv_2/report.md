@@ -5,22 +5,22 @@ Below are the cosine similarities (correlation coefficients) between the ground 
 
 | Component | Component Label | Concentration Score (A) | Chromatography Profile (B) | Spectral Profile (C) |
 |---|---|---|---|---|
-| **Component 1** | Component 1 (Baseline Interference) | 0.999394 | 0.990444 | 0.999962 |
-| **Component 2** | Component 2 (Peak 1) | 0.999486 | 0.990661 | 0.999959 |
-| **Component 3** | Component 3 (Peak 2) | 0.999334 | 0.990569 | 0.999948 |
+| **Component 1** | Component 1 (Baseline Interference) | 0.999405 | 0.990370 | 0.999965 |
+| **Component 2** | Component 2 (Peak 1) | 0.999486 | 0.990623 | 0.999965 |
+| **Component 3** | Component 3 (Peak 2) | 0.999337 | 0.990577 | 0.999958 |
 
 ### Key Averages:
-- **Mean Score Similarity:** 0.999405
-- **Mean Elution Profile Similarity:** 0.990558
-- **Mean Spectral Profile Similarity:** 0.999957
+- **Mean Score Similarity:** 0.999410
+- **Mean Elution Profile Similarity:** 0.990523
+- **Mean Spectral Profile Similarity:** 0.999963
 
 ## 2. Retention Time Warping & Alignment Performance
 The warping head aligns sample-specific shifting and stretching to the canonical time grid.
 
-- **Mean Coordinate Alignment Error (MAE):** 2.875181e-03 (normalized time units)
-- **Shift Parameter (beta) Correlation:** 0.976382
-- **Stretch Parameter (alpha) Correlation:** 0.985249
-- **Mean Absolute Shift Parameter Error:** 4.996863e-03
+- **Mean Coordinate Alignment Error (MAE):** 2.908489e-03 (normalized time units)
+- **Shift Parameter (beta) Correlation:** 0.975638
+- **Stretch Parameter (alpha) Correlation:** 0.984098
+- **Mean Absolute Shift Parameter Error:** 5.049883e-03
 
 ## 3. Visualization Artifacts
 The following plots have been generated and saved to the experiment folder:

@@ -123,6 +123,20 @@ To handle amplitude-dampened data scales (like second-derivatives where signal v
 * **Significance Check:** An improvement in loss qualifies only if the absolute change $\Delta\text{MSE} > \text{tol} \cdot \sigma^2_y$ and the relative change exceeds `tol`.
 * **Logging:** Output values are printed using scientific notation (`%.3e`) to prevent round-off display ambiguity.
 
+### SVD Warm-Start Initialization
+Analytical chromatography models are notoriously sensitive to initialization because random starting profiles (random noise) cause the warping head to attempt to align static noise, locking the network into local minima. Chroma-PETN incorporates an unfolded **Truncated SVD** warm-start utility:
+
+1. **Unfolded Modes:** The 3D tensor $X \in \mathbb{R}^{I \times J \times K}$ is unfolded along each of the three modes:
+   * Mode 1 (Samples): $X_{(1)} \in \mathbb{R}^{I \times JK}$
+   * Mode 2 (Time): $X_{(2)} \in \mathbb{R}^{J \times IK}$
+   * Mode 3 (Spectra): $X_{(3)} \in \mathbb{R}^{K \times IJ}$
+2. **Singular Vectors:** SVD is computed for each unfolding to extract the top $R$ left singular vectors ($U_1, U_2, U_3$) and singular values ($S_1, S_2, S_3$).
+3. **Physical Scale Distribution:** To preserve the physical intensity of the raw data, the components are scaled by the cube root of the singular values ($S_d^{1/3}$):
+   $$A_{\text{init}} = |U_1[:, :R]| \odot S_1^{1/3} + 10^{-4}$$
+   $$B_{\text{init}} = |U_2[:, :R]| \odot S_2^{1/3} + 10^{-4}$$
+   $$C_{\text{init}} = |U_3[:, :R]| \odot S_3^{1/3} + 10^{-4}$$
+4. **Warp Resets:** Upon initialization, all shift/stretch warping parameters and GC-MS shape residuals ($\Delta B_i$) are reset to zero (initially aligned), meaning the warping head starts Epoch 0 making only micro-adjustments on top of the "average" peak shapes.
+
 ---
 
 ## 2. Package Structure
@@ -130,9 +144,13 @@ To handle amplitude-dampened data scales (like second-derivatives where signal v
 ```
 src/chroma/
 ├── __init__.py
-├── model.py        # Chroma-PETN PyTorch model class
-├── generator.py    # Synthetic chromatographic dataset simulator
-└── train.py        # Training, alignment, and evaluation pipeline
+├── base.py         # Base class (BaseChromaPETN) with core parameters and warping equations
+├── hplc.py         # HPLC-DAD specific PETN (HPLC_PETN) with baseline and Savitzky-Golay filtering
+├── gcms.py         # GC-MS specific PETN (GCMS_PETN) with sparse losses and shape residuals
+├── generator.py    # Synthetic chromatographic dataset generators (GCMS and HPLC-DAD)
+├── dataset.py      # PyTorch dataset and dataloader for coordinate representation
+├── plots.py        # Diagnostic alignment and loading verification plots
+└── train.py        # High-level training, alignment, and evaluation pipeline
 ```
 
 ---
@@ -166,8 +184,8 @@ You can train Chroma-PETN directly on a 3D dataset array using the high-level `t
 ```python
 from src.chroma.train import train_chroma_petn, evaluate_chroma_alignment
 
-# X is a 3D numpy array of shape (Samples, Time, Spec)
-# Train with a second-derivative Savitzky-Golay filter and spline warping:
+# X is a 3D numpy array or torch.Tensor of shape (Samples, Time, Spec)
+# Train an HPLC model with a second-derivative Savitzky-Golay filter and spline warping:
 model = train_chroma_petn(
     dataset=X,
     num_components=3,
@@ -177,38 +195,42 @@ model = train_chroma_petn(
     num_segments=4,
     derivative_order=2,
     sg_window_size=15,
-    batch_size=None,      # None (default) for fast grid-based mode; specify int (e.g. 50000) for batched coordinates
+    batch_size=None,      # None (default) for fast grid-based mode; specify int for batched coordinates
     compile_model=True,   # True (default) to compile the model graph using torch.compile
+    init_svd=True,        # True (default) to warm-start embedding tables via Truncated SVD
     tol=1e-6,
     patience=50
 )
 
-
-# Extract aligned profiles
-# model.sample_embeddings.weight -> Scores (A)
-# model.time_embeddings.weight   -> Aligned chromatography profiles (B)
-# model.spec_embeddings.weight   -> Pure spectra loadings (C)
+# Extract aligned profiles directly from parameters
+# model.A -> Scores (shape: num_samples x R)
+# model.B -> Canonical chromatography profiles (shape: num_time x R)
+# model.C -> Pure spectra loadings (shape: num_spec x R)
 ```
 
 ### Advanced Custom Training Loop
 
-If you need custom loss functions or training control, instantiate `ChromaPETN` directly:
+If you need custom loss functions or training control, instantiate the submodels directly:
 
 ```python
 import torch
-from src.chroma.model import ChromaPETN
+from src.chroma import HPLC_PETN
 
-# Initialize model
+# Initialize the HPLC-DAD model
 # I = num_samples, J = num_retention_times, K = num_spectral_channels
-model = ChromaPETN(
+model = HPLC_PETN(
     num_samples=12, 
     num_time=150, 
     num_spec=100, 
     num_components=3,
     warp_type='quadratic',
     derivative_order=2,
-    sg_window_size=15
+    sg_window_size=15,
+    sample_specific_baseline=True
 )
+
+# Explicitly warm start model from SVD on the input tensor X
+model.init_from_svd(X)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 

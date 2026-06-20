@@ -52,10 +52,11 @@ petn_parafac/
 │   │   └── README.md       # EEM-specific detailed documentation
 │   └── chroma/             # Chromatography Subpackage
 │       ├── __init__.py
-│       ├── model.py        # Chroma-PETN model with warping layer
-│       ├── generator.py    # Synthetic GC-MS/HPLC data simulator
-│       ├── train.py        # Chromatography training script
-│       ├── benchmark.py    # Chromatography benchmark script
+│       ├── base.py         # Base class (BaseChromaPETN) with core parameters and warping equations
+│       ├── hplc.py         # HPLC-DAD specific PETN (HPLC_PETN) with baseline and derivatives
+│       ├── gcms.py         # GC-MS specific PETN (GCMS_PETN) with sparse losses and shape residuals
+│       ├── generator.py    # Synthetic GC-MS/HPLC-DAD data simulator
+│       ├── train.py        # Training and alignment/evaluation script
 │       └── README.md       # Chromatography-specific detailed documentation
 ├── tests/
 │   ├── eem/                # EEM unit and import tests

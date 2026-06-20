@@ -155,3 +155,38 @@ def test_chroma_subclasses():
     
     y_dad = model_dad(sample_idx, time_idx, spec_idx)
     assert y_dad.shape == (batch_size,)
+
+
+def test_chroma_svd_initialization():
+    num_samples = 5
+    num_time = 30
+    num_spec = 20
+    num_components = 3
+    
+    # Generate random positive data
+    X = torch.rand(num_samples, num_time, num_spec) + 0.1
+    
+    # Test on HPLC model
+    model_dad = HPLC_PETN(num_samples, num_time, num_spec, num_components=num_components)
+    model_dad.init_from_svd(X)
+    
+    # Verify shapes and non-negativity
+    assert model_dad.A.shape == (num_samples, num_components)
+    assert model_dad.B.shape == (num_time, num_components)
+    assert model_dad.C.shape == (num_spec, num_components)
+    
+    assert torch.all(model_dad.A >= 0.0)
+    assert torch.all(model_dad.B >= 0.0)
+    assert torch.all(model_dad.C >= 0.0)
+    
+    # Now check GC-MS model
+    model_gcms = GCMS_PETN(num_samples, num_time, num_spec, num_components=num_components)
+    # Set warping/delta_B to non-zero values to make sure they are reset to 0 during svd init
+    with torch.no_grad():
+        model_gcms.alpha.fill_(0.1)
+        model_gcms.delta_B.fill_(1.5)
+        
+    model_gcms.init_from_svd(X)
+    
+    assert torch.all(model_gcms.alpha == 0.0)
+    assert torch.all(model_gcms.delta_B == 0.0)

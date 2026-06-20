@@ -63,6 +63,77 @@ class BaseChromaPETN(nn.Module, ABC):
             nn.init.constant_(self.log_increments, 0.0)
 
     @torch.no_grad()
+    def init_from_svd(self, X_tensor):
+        """
+        Warm-starts the embedding tables (A, B, C) using unfolded Truncated SVD.
+        This gives the network the "average" peak shapes and spectra on Epoch 0,
+        meaning the warping head only has to make micro-adjustments.
+        
+        Parameters
+        ----------
+        X_tensor : torch.Tensor or numpy.ndarray
+            The 3D chromatographic input tensor of shape (I, J, K).
+        """
+        # Ensure input is a PyTorch tensor
+        if not isinstance(X_tensor, torch.Tensor):
+            X_tensor = torch.tensor(X_tensor, dtype=torch.float32)
+            
+        # Run SVD on CPU for platform compatibility and numerical stability
+        X_cpu = X_tensor.detach().cpu().to(dtype=torch.float32)
+        I, J, K = X_cpu.shape
+        R = self.num_components
+        
+        if torch.isnan(X_cpu).any() or torch.isinf(X_cpu).any():
+            import warnings
+            warnings.warn("X_tensor contains NaN or Inf values. SVD initialization aborted, falling back to random init.")
+            self.reset_parameters()
+            return
+            
+        try:
+            # Reset all parameters to defaults (aligns warp parameters and zeroes GC-MS residuals)
+            self.reset_parameters()
+            
+            # Mode 1 (Samples): self.A -> shape (I, R)
+            X_1 = X_cpu.reshape(I, -1)
+            U_1, S_1, _ = torch.linalg.svd(X_1, full_matrices=False)
+            R_1 = min(U_1.shape[1], R)
+            scale_1 = S_1[:R_1] ** (1.0 / 3.0)
+            A_init = torch.zeros((I, R), device=X_cpu.device, dtype=X_cpu.dtype)
+            nn.init.uniform_(A_init, a=0.01, b=0.1)
+            A_init[:, :R_1] = torch.abs(U_1[:, :R_1]) * scale_1.unsqueeze(0) + 1e-4
+            
+            # Mode 2 (Time): self.B -> shape (J, R)
+            X_2 = X_cpu.transpose(0, 1).reshape(J, -1)
+            U_2, S_2, _ = torch.linalg.svd(X_2, full_matrices=False)
+            R_2 = min(U_2.shape[1], R)
+            scale_2 = S_2[:R_2] ** (1.0 / 3.0)
+            B_init = torch.zeros((J, R), device=X_cpu.device, dtype=X_cpu.dtype)
+            nn.init.uniform_(B_init, a=0.01, b=0.1)
+            B_init[:, :R_2] = torch.abs(U_2[:, :R_2]) * scale_2.unsqueeze(0) + 1e-4
+            
+            # Mode 3 (Spectra): self.C -> shape (K, R)
+            X_3 = X_cpu.transpose(0, 2).reshape(K, -1)
+            U_3, S_3, _ = torch.linalg.svd(X_3, full_matrices=False)
+            R_3 = min(U_3.shape[1], R)
+            scale_3 = S_3[:R_3] ** (1.0 / 3.0)
+            C_init = torch.zeros((K, R), device=X_cpu.device, dtype=X_cpu.dtype)
+            nn.init.uniform_(C_init, a=0.01, b=0.1)
+            C_init[:, :R_3] = torch.abs(U_3[:, :R_3]) * scale_3.unsqueeze(0) + 1e-4
+            
+            # Copy initialized values to parameters on native device
+            self.A.copy_(A_init.to(device=self.A.device, dtype=self.A.dtype))
+            self.B.copy_(B_init.to(device=self.B.device, dtype=self.B.dtype))
+            self.C.copy_(C_init.to(device=self.C.device, dtype=self.C.dtype))
+            
+            # Project constraints
+            self.project_constraints()
+            
+        except Exception as e:
+            import warnings
+            warnings.warn(f"SVD warm-start initialization failed: {e}. Falling back to default random initialization.")
+            self.reset_parameters()
+
+    @torch.no_grad()
     def project_constraints(self):
         """
         Enforces strict physical constraints: non-negativity on A, B, C,
