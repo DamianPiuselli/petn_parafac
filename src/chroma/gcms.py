@@ -8,9 +8,10 @@ class GCMS_PETN(BaseChromaPETN):
     Implements masked loss, L1 spectral sparsity, and sample-specific residual shape matrices delta_B.
     """
     def __init__(self, num_samples, num_time, num_spec, num_components=3, warp_type='linear', num_segments=4,
-                 lambda_c=0.01, lambda_res=1.0):
+                 lambda_c=0.01, lambda_res=1.0, component_specific_warp=False):
         # Initialize parent first
-        super().__init__(num_samples, num_time, num_spec, num_components=num_components, warp_type=warp_type, num_segments=num_segments)
+        super().__init__(num_samples, num_time, num_spec, num_components=num_components, warp_type=warp_type,
+                         num_segments=num_segments, component_specific_warp=component_specific_warp)
         self.lambda_c = lambda_c
         self.lambda_res = lambda_res
         

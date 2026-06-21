@@ -421,9 +421,13 @@ def run_solidago_experiment():
         'vial': metadata['vial'],
         'trt': metadata['trt']
     }
-    for r in range(R):
-        warp_headers[f'alpha_C{r+1}'] = alpha_learned[:, r]
-        warp_headers[f'beta_C{r+1}'] = beta_learned[:, r]
+    if raw_model.component_specific_warp:
+        for r in range(R):
+            warp_headers[f'alpha_C{r+1}'] = alpha_learned[:, r]
+            warp_headers[f'beta_C{r+1}'] = beta_learned[:, r]
+    else:
+        warp_headers['alpha'] = alpha_learned[:, 0]
+        warp_headers['beta'] = beta_learned[:, 0]
     warp_df = pd.DataFrame(warp_headers)
     
     # Compute component physical peaks

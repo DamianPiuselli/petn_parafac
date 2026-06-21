@@ -8,7 +8,7 @@ class BaseChromaPETN(nn.Module, ABC):
     Handles core parameter representations (A, B, C), component-specific warping (alpha, beta),
     and area-preserving differentiable interpolation.
     """
-    def __init__(self, num_samples, num_time, num_spec, num_components=3, warp_type='linear', num_segments=4):
+    def __init__(self, num_samples, num_time, num_spec, num_components=3, warp_type='linear', num_segments=4, component_specific_warp=False):
         super().__init__()
         self.num_samples = num_samples
         self.num_time = num_time
@@ -16,6 +16,7 @@ class BaseChromaPETN(nn.Module, ABC):
         self.num_components = num_components
         self.warp_type = warp_type
         self.num_segments = num_segments
+        self.component_specific_warp = component_specific_warp
         
         # Validate warp type
         if warp_type not in ['linear', 'quadratic', 'spline']:
@@ -26,21 +27,22 @@ class BaseChromaPETN(nn.Module, ABC):
         self.B = nn.Parameter(torch.zeros(num_time, num_components))     # Canonical Profiles
         self.C = nn.Parameter(torch.zeros(num_spec, num_components))     # Spectra
         
-        # 2. Component-Specific Warping Parameters (Shape: [I, R])
+        # 2. Warping Parameters (Shape: [I, R] if component-specific, else [I, 1])
+        dim2 = num_components if self.component_specific_warp else 1
         if self.warp_type == 'linear':
             # alpha (stretch) and beta (shift) per sample and component
-            self.alpha = nn.Parameter(torch.zeros(num_samples, num_components))
-            self.beta = nn.Parameter(torch.zeros(num_samples, num_components))
+            self.alpha = nn.Parameter(torch.zeros(num_samples, dim2))
+            self.beta = nn.Parameter(torch.zeros(num_samples, dim2))
         elif self.warp_type == 'quadratic':
             # alpha (quadratic), beta (linear), gamma (shift) per sample and component
-            self.alpha = nn.Parameter(torch.zeros(num_samples, num_components))
-            self.beta = nn.Parameter(torch.zeros(num_samples, num_components))
-            self.gamma = nn.Parameter(torch.zeros(num_samples, num_components))
+            self.alpha = nn.Parameter(torch.zeros(num_samples, dim2))
+            self.beta = nn.Parameter(torch.zeros(num_samples, dim2))
+            self.gamma = nn.Parameter(torch.zeros(num_samples, dim2))
         elif self.warp_type == 'spline':
             # shift (beta) per sample and component
-            self.beta = nn.Parameter(torch.zeros(num_samples, num_components))
+            self.beta = nn.Parameter(torch.zeros(num_samples, dim2))
             # log-increments per sample, segment, and component
-            self.log_increments = nn.Parameter(torch.zeros(num_samples, num_segments, num_components))
+            self.log_increments = nn.Parameter(torch.zeros(num_samples, num_segments, dim2))
             
         self.reset_parameters()
 
@@ -178,8 +180,11 @@ class BaseChromaPETN(nn.Module, ABC):
         t = t.unsqueeze(-1)  # Broadcast over components: (BatchSize, 1)
         
         if self.warp_type == 'linear':
-            alpha_i = self.alpha[sample_idx]  # (BatchSize, num_components)
-            beta_i = self.beta[sample_idx]    # (BatchSize, num_components)
+            alpha_i = self.alpha[sample_idx]
+            beta_i = self.beta[sample_idx]
+            if not self.component_specific_warp:
+                alpha_i = alpha_i.expand(-1, self.num_components)
+                beta_i = beta_i.expand(-1, self.num_components)
             t_warped = t - (alpha_i * t + beta_i)  # (BatchSize, num_components)
             jacobian = 1.0 - alpha_i
             
@@ -187,12 +192,19 @@ class BaseChromaPETN(nn.Module, ABC):
             alpha_i = self.alpha[sample_idx]
             beta_i = self.beta[sample_idx]
             gamma_i = self.gamma[sample_idx]
+            if not self.component_specific_warp:
+                alpha_i = alpha_i.expand(-1, self.num_components)
+                beta_i = beta_i.expand(-1, self.num_components)
+                gamma_i = gamma_i.expand(-1, self.num_components)
             t_warped = t - (alpha_i * (t ** 2) + beta_i * t + gamma_i)
             jacobian = 1.0 - (2.0 * alpha_i * t + beta_i)
             
         elif self.warp_type == 'spline':
-            beta_i = self.beta[sample_idx]  # (BatchSize, num_components)
-            log_inc_i = self.log_increments[sample_idx]  # (BatchSize, num_segments, num_components)
+            beta_i = self.beta[sample_idx]
+            log_inc_i = self.log_increments[sample_idx]
+            if not self.component_specific_warp:
+                beta_i = beta_i.expand(-1, self.num_components)
+                log_inc_i = log_inc_i.expand(-1, -1, self.num_components)
             
             # Compute step increments and knot positions
             inc_i = (1.0 / self.num_segments) * torch.exp(log_inc_i)  # (BatchSize, num_segments, num_components)
@@ -253,29 +265,46 @@ class BaseChromaPETN(nn.Module, ABC):
         
         # 1. Warp time coordinates per sample and component
         if self.warp_type == 'linear':
+            alpha = self.alpha
+            beta = self.beta
+            if not self.component_specific_warp:
+                alpha = alpha.expand(-1, self.num_components)
+                beta = beta.expand(-1, self.num_components)
             # t_grid: (num_time,) -> (1, 1, num_time)
             # alpha: (num_samples, num_components) -> (num_samples, num_components, 1)
             t_warped = t_grid.view(1, 1, -1) - (
-                self.alpha.unsqueeze(-1) * t_grid.view(1, 1, -1) + self.beta.unsqueeze(-1)
+                alpha.unsqueeze(-1) * t_grid.view(1, 1, -1) + beta.unsqueeze(-1)
             )  # (num_samples, num_components, num_time)
-            jacobian = 1.0 - self.alpha.unsqueeze(-1)  # (num_samples, num_components, 1)
+            jacobian = 1.0 - alpha.unsqueeze(-1)  # (num_samples, num_components, 1)
             
         elif self.warp_type == 'quadratic':
+            alpha = self.alpha
+            beta = self.beta
+            gamma = self.gamma
+            if not self.component_specific_warp:
+                alpha = alpha.expand(-1, self.num_components)
+                beta = beta.expand(-1, self.num_components)
+                gamma = gamma.expand(-1, self.num_components)
             t_warped = t_grid.view(1, 1, -1) - (
-                self.alpha.unsqueeze(-1) * (t_grid.view(1, 1, -1) ** 2) +
-                self.beta.unsqueeze(-1) * t_grid.view(1, 1, -1) +
-                self.gamma.unsqueeze(-1)
+                alpha.unsqueeze(-1) * (t_grid.view(1, 1, -1) ** 2) +
+                beta.unsqueeze(-1) * t_grid.view(1, 1, -1) +
+                gamma.unsqueeze(-1)
             )  # (num_samples, num_components, num_time)
             jacobian = 1.0 - (
-                2.0 * self.alpha.unsqueeze(-1) * t_grid.view(1, 1, -1) + self.beta.unsqueeze(-1)
+                2.0 * alpha.unsqueeze(-1) * t_grid.view(1, 1, -1) + beta.unsqueeze(-1)
             )
             
         elif self.warp_type == 'spline':
-            inc = (1.0 / self.num_segments) * torch.exp(self.log_increments)  # (num_samples, num_segments, num_components)
+            beta = self.beta
+            log_increments = self.log_increments
+            if not self.component_specific_warp:
+                beta = beta.expand(-1, self.num_components)
+                log_increments = log_increments.expand(-1, -1, self.num_components)
+            inc = (1.0 / self.num_segments) * torch.exp(log_increments)  # (num_samples, num_segments, num_components)
             inc = inc.permute(0, 2, 1)  # (num_samples, num_components, num_segments)
             zeros = torch.zeros((self.num_samples, self.num_components, 1), device=device, dtype=inc.dtype)
             cum_inc = torch.cumsum(torch.cat([zeros, inc], dim=2), dim=2)  # (num_samples, num_components, num_segments + 1)
-            w = self.beta.unsqueeze(-1) + cum_inc  # (num_samples, num_components, num_segments + 1)
+            w = beta.unsqueeze(-1) + cum_inc  # (num_samples, num_components, num_segments + 1)
             
             val = t_grid * self.num_segments  # (num_time,)
             k = torch.clamp(torch.floor(val).long(), 0, self.num_segments - 1)  # (num_time,)

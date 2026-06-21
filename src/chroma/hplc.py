@@ -8,8 +8,10 @@ class HPLC_PETN(BaseChromaPETN):
     Supports continuous absorbance modeling, Savitzky-Golay derivatives, and baseline offset subtraction.
     """
     def __init__(self, num_samples, num_time, num_spec, num_components=3, warp_type='linear', num_segments=4,
-                 derivative_order=0, sg_window_size=11, sg_polyorder=2, sample_specific_baseline=False):
-        super().__init__(num_samples, num_time, num_spec, num_components=num_components, warp_type=warp_type, num_segments=num_segments)
+                 derivative_order=0, sg_window_size=11, sg_polyorder=2, sample_specific_baseline=False,
+                 component_specific_warp=False):
+        super().__init__(num_samples, num_time, num_spec, num_components=num_components, warp_type=warp_type,
+                         num_segments=num_segments, component_specific_warp=component_specific_warp)
         self.derivative_order = derivative_order
         self.sg_window_size = sg_window_size
         self.sg_polyorder = sg_polyorder
