@@ -8,43 +8,44 @@ This report provides a formal evaluation of the Gray-Box Physics-Embedded Tensor
 |---|---|
 | **Model Type** | `HPLC_PETN` (HPLC-DAD optimization) |
 | **Sliced Time Window** | **10.00 to 13.00 minutes** |
-| **Resolved Components (R)** | 2 |
+| **Resolved Components (R)** | 3 |
 | **Warping Mode** | `linear` |
 | **Savitzky-Golay Filter** | Order: 2 (derivative), Window size: 11 |
 | **Spectral Similarity Penalty ($\lambda_{\text{sim}}$)** | 100.0 |
 | **Baseline L2 Penalty ($\lambda_{\text{base}}$)** | 0.5 |
-| **Convergence Epoch** | 1191 |
-| **Final Model Loss (Derivative MSE)** | 2.76750e+01 |
-| **Reconstructed Fit R² (Variance Explained)** | **73.95%** |
+| **Convergence Epoch** | 150 |
+| **Final Model Loss (Derivative MSE)** | 3.34106e+01 |
+| **Reconstructed Fit R² (Variance Explained)** | **68.65%** |
 
 ## 3. Resolved Chemical Components
 The model resolved the localized components. Below are their characteristic physical properties:
 
 | Component | RT apex ($t_{\max}$) | Spectral Maxima ($\lambda_{\max}$) | Mean Score ($+$) | Mean Score ($-$) | Ratio ($+/$-) |
 |---|---|---|---|---|---|
-| **Component 1** | 12.30 min | 318.0 nm | 6889.2 | 13605.6 | 0.51x |
-| **Component 2** | 12.06 min | 202.0 nm | 2906.5 | 1617.2 | 1.80x |
+| **Component 1** | 12.30 min | 316.0 nm | 3337.9 | 13502.1 | 0.25x |
+| **Component 2** | 12.08 min | 202.0 nm | 3582.0 | 351.2 | 10.20x |
+| **Component 3** | 12.20 min | 270.0 nm | 2401.4 | 418.1 | 5.74x |
 
 > [!IMPORTANT]
-> **Biological Conclusion:** In the localized peak window, the resolved components display distinct profiles. Specifically, **Component 2** is upregulated by **1.80x** in the insecticide-treated roots (`+` treatment). This aligns with ecological studies indicating that herbivore exclusion selects for goldenrod genotypes with elevated allelopathic polyacetylenes (e.g. CDME, which absorbs strongly in the UV range).
+> **Biological Conclusion:** In the localized peak window, the resolved components display distinct profiles. Specifically, **Component 2** is upregulated by **10.20x** in the insecticide-treated roots (`+` treatment). This aligns with ecological studies indicating that herbivore exclusion selects for goldenrod genotypes with elevated allelopathic polyacetylenes (e.g. CDME, which absorbs strongly in the UV range).
 
 ## 4. Detailed Tables
 
 ### Sample Scores (A Loading)
-| vial | Component_1     | Component_2        |
-| -----|-----------------|------------------- |
-| 119  | 3248.53515625   | 4149.5859375       |
-| 122  | 10529.9375      | 1663.4923095703125 |
-| 121  | 7742.1328125    | 1094.3253173828125 |
-| 458  | 19469.017578125 | 2140.153564453125  |
+| vial | Component_1       | Component_2        | Component_3        |
+| -----|-------------------|--------------------|------------------- |
+| 119  | 2086.004638671875 | 5757.25634765625   | 1306.6669921875    |
+| 122  | 4589.74609375     | 1406.7127685546875 | 3496.044189453125  |
+| 121  | 7552.29541015625  | 64.1406478881836   | 246.78616333007812 |
+| 458  | 19451.951171875   | 638.2239990234375  | 589.4068603515625  |
 
 ### Learned Warping Parameters (Mean-Centered)
-| vial | trt | alpha_C1             | beta_C1               | alpha_C2             | beta_C2              |
-| -----|-----|----------------------|-----------------------|----------------------|--------------------- |
-| 119  | +   | 0.035576917231082916 | -0.01883494108915329  | -0.03428228199481964 | 0.029285266995429993 |
-| 122  | +   | 0.01552771870046854  | -0.042663391679525375 | 0.11165042966604233  | -0.15000000596046448 |
-| 121  | -   | -0.02819964662194252 | 0.03825261816382408   | -0.07871253043413162 | 0.15000000596046448  |
-| 458  | -   | -0.02290498837828636 | 0.023245714604854584  | 0.001344385789707303 | -0.03179718554019928 |
+| vial | trt | alpha_C1               | beta_C1              | alpha_C2              | beta_C2               | alpha_C3              | beta_C3               |
+| -----|-----|------------------------|----------------------|-----------------------|-----------------------|-----------------------|---------------------- |
+| 119  | +   | 0.007153583690524101   | 0.016370989382267    | -0.004036350175738335 | 0.0016243597492575645 | 0.05521106347441673   | -0.016928184777498245 |
+| 122  | +   | 0.00445720087736845    | -0.03963332250714302 | 0.001709542702883482  | -0.04564140364527702  | 0.018816713243722916  | -0.021031705662608147 |
+| 121  | -   | -0.0025381557643413544 | 0.014315897598862648 | 0.03567791357636452   | -0.051591165363788605 | -0.062496479600667953 | -0.003464963287115097 |
+| 458  | -   | -0.009072628803551197  | 0.008946433663368225 | -0.0333511084318161   | 0.09560821205377579   | -0.011531294323503971 | 0.04142485186457634   |
 
 ## 5. Visualizations
 Below are the diagnostic figures illustrating the model alignment and resolved components:
