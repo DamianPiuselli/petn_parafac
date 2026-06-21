@@ -42,6 +42,6 @@ The library does not use soft loss penalties; it embeds physical laws directly i
 * **EEM Spectroscopy Track:**
   * *(Backlog is currently empty - pending next phase of changes)*
 * **Chromatography Track:**
-  * *(Backlog is currently empty - pending next phase of changes)*
+  * Implement a preprocessing/resampling utility to interpolate and align raw chromatographic runs with unique, sample-specific non-uniform time arrays onto a shared, uniform time grid. It should support 1D linear and cubic spline interpolation and compile the results into a single 3D dense tensor `(Samples, Time, Wavelengths/Spectra)` suitable for SVD warm-start initialization and training in Chroma-PETN.
 
 When generating code, architectures, or training loops, ensure all physical constraints are hardcoded into the layers and loss functions as specified above.
