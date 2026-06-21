@@ -201,7 +201,7 @@ def run_solidago_experiment():
     # ==============================================================
     time_start = 10.0      # Start of retention time window (minutes)
     time_end = 13.0        # End of retention time window (minutes)
-    num_components = 2     # Number of components to resolve within the window
+    num_components = 3     # Number of components to resolve within the window
     warp_type = 'linear'   # Warping type: 'linear', 'quadratic', 'spline'
     derivative_order = 2   # 2nd derivative for baseline correction
     sg_window_size = 11    # Savitzky-Golay filter window size (must be odd)
