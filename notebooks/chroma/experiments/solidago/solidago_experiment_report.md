@@ -11,38 +11,40 @@ This report provides a formal evaluation of the Gray-Box Physics-Embedded Tensor
 | **Resolved Components (R)** | 2 |
 | **Warping Mode** | `linear` |
 | **Savitzky-Golay Filter** | Order: 2 (derivative), Window size: 11 |
-| **Convergence Epoch** | 1200 |
-| **Final Model Loss (Derivative MSE)** | 2.75430e+00 |
-| **Reconstructed Fit R² (Variance Explained)** | **97.49%** |
+| **Spectral Similarity Penalty ($\lambda_{\text{sim}}$)** | 100.0 |
+| **Baseline L2 Penalty ($\lambda_{\text{base}}$)** | 0.5 |
+| **Convergence Epoch** | 1191 |
+| **Final Model Loss (Derivative MSE)** | 2.76750e+01 |
+| **Reconstructed Fit R² (Variance Explained)** | **73.95%** |
 
 ## 3. Resolved Chemical Components
 The model resolved the localized components. Below are their characteristic physical properties:
 
 | Component | RT apex ($t_{\max}$) | Spectral Maxima ($\lambda_{\max}$) | Mean Score ($+$) | Mean Score ($-$) | Ratio ($+/$-) |
 |---|---|---|---|---|---|
-| **Component 1** | 12.32 min | 318.0 nm | 6386.1 | 14751.3 | 0.43x |
-| **Component 2** | 12.08 min | 318.0 nm | 7169.2 | 2436.7 | 2.94x |
+| **Component 1** | 12.30 min | 318.0 nm | 6889.2 | 13605.6 | 0.51x |
+| **Component 2** | 12.06 min | 202.0 nm | 2906.5 | 1617.2 | 1.80x |
 
 > [!IMPORTANT]
-> **Biological Conclusion:** In the localized peak window, the resolved components display distinct profiles. Specifically, **Component 2** is upregulated by **2.94x** in the insecticide-treated roots (`+` treatment). This aligns with ecological studies indicating that herbivore exclusion selects for goldenrod genotypes with elevated allelopathic polyacetylenes (e.g. CDME, which absorbs strongly in the UV range).
+> **Biological Conclusion:** In the localized peak window, the resolved components display distinct profiles. Specifically, **Component 2** is upregulated by **1.80x** in the insecticide-treated roots (`+` treatment). This aligns with ecological studies indicating that herbivore exclusion selects for goldenrod genotypes with elevated allelopathic polyacetylenes (e.g. CDME, which absorbs strongly in the UV range).
 
 ## 4. Detailed Tables
 
 ### Sample Scores (A Loading)
-| vial | Component_1        | Component_2        |
-| -----|--------------------|------------------- |
-| 119  | 1581.7493896484375 | 13272.203125       |
-| 122  | 11190.4072265625   | 1066.2406005859375 |
-| 121  | 8259.8427734375    | 838.5316772460938  |
-| 458  | 21242.818359375    | 4034.90234375      |
+| vial | Component_1     | Component_2        |
+| -----|-----------------|------------------- |
+| 119  | 3248.53515625   | 4149.5859375       |
+| 122  | 10529.9375      | 1663.4923095703125 |
+| 121  | 7742.1328125    | 1094.3253173828125 |
+| 458  | 19469.017578125 | 2140.153564453125  |
 
 ### Learned Warping Parameters (Mean-Centered)
-| vial | trt | alpha_C1               | beta_C1               | alpha_C2             | beta_C2               |
-| -----|-----|------------------------|-----------------------|----------------------|---------------------- |
-| 119  | +   | -0.0029816380701959133 | 0.035731419920921326  | -0.04514811560511589 | 0.03011495992541313   |
-| 122  | +   | 0.02573510631918907    | -0.0601646825671196   | -0.05145810544490814 | 0.004332950338721275  |
-| 121  | -   | -0.013333314098417759  | 0.01934073306620121   | 0.06462518125772476  | -0.025199223309755325 |
-| 458  | -   | -0.009420153684914112  | 0.0050925337709486485 | 0.03198104351758957  | -0.009248687885701656 |
+| vial | trt | alpha_C1             | beta_C1               | alpha_C2             | beta_C2              |
+| -----|-----|----------------------|-----------------------|----------------------|--------------------- |
+| 119  | +   | 0.035576917231082916 | -0.01883494108915329  | -0.03428228199481964 | 0.029285266995429993 |
+| 122  | +   | 0.01552771870046854  | -0.042663391679525375 | 0.11165042966604233  | -0.15000000596046448 |
+| 121  | -   | -0.02819964662194252 | 0.03825261816382408   | -0.07871253043413162 | 0.15000000596046448  |
+| 458  | -   | -0.02290498837828636 | 0.023245714604854584  | 0.001344385789707303 | -0.03179718554019928 |
 
 ## 5. Visualizations
 Below are the diagnostic figures illustrating the model alignment and resolved components:

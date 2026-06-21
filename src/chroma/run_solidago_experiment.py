@@ -139,6 +139,11 @@ def generate_report(save_dir, time_start, time_end, epochs, final_loss, fit_perc
         f.write(f"| **Resolved Components (R)** | {config['num_components']} |\n")
         f.write(f"| **Warping Mode** | `{config['warp_type']}` |\n")
         f.write(f"| **Savitzky-Golay Filter** | Order: {config['derivative_order']} (derivative), Window size: {config['sg_window_size']} |\n")
+        
+        # String concatenation to bypass Python f-string backslash validation in LaTeX formulas
+        f.write("| **Spectral Similarity Penalty ($\\lambda_{\\text{sim}}$)** | " + str(config['lambda_spec_similarity']) + " |\n")
+        f.write("| **Baseline L2 Penalty ($\\lambda_{\\text{base}}$)** | " + str(config['lambda_baseline_reg']) + " |\n")
+        
         f.write(f"| **Convergence Epoch** | {epochs} |\n")
         f.write(f"| **Final Model Loss (Derivative MSE)** | {final_loss:.5e} |\n")
         f.write(f"| **Reconstructed Fit R² (Variance Explained)** | **{fit_percent:.2f}%** |\n\n")
@@ -148,7 +153,7 @@ def generate_report(save_dir, time_start, time_end, epochs, final_loss, fit_perc
         f.write("| Component | RT apex ($t_{\\max}$) | Spectral Maxima ($\\lambda_{\\max}$) | Mean Score ($+$) | Mean Score ($-$) | Ratio ($+/$-) |\n")
         f.write("|---|---|---|---|---|---|\n")
         for r in range(A.shape[1]):
-            f.write(f"| **Component {r+1}** | {B_meta[r]['rt_max']:.2f} min | {C_meta[r]['lam_max']:.1f} nm | {mean_plus[r]:.1f} | {mean_minus[r]:.1f} | {fold_changes[r]:.2f}x |\n")
+            f.write("| **Component " + str(r+1) + "** | " + f"{B_meta[r]['rt_max']:.2f} min | {C_meta[r]['lam_max']:.1f} nm | {mean_plus[r]:.1f} | {mean_minus[r]:.1f} | {fold_changes[r]:.2f}x |\n")
         f.write("\n")
         
         f.write("> [!IMPORTANT]\n")
@@ -205,6 +210,10 @@ def run_solidago_experiment():
     patience = 100         # Early stopping patience
     warp_reg_coef = 0.001  # Regularization on warp shifts/stretches
     lambda_smooth_B = 0.01 # Smoothness penalty on chromatographic profiles
+    
+    # Custom Constraints
+    lambda_spec_similarity = 100.0 # Restricts resolved spectra (C) from collapsing / being identical
+    lambda_baseline_reg = 0.5      # Restricts baseline parameters from blowing up / diverging
     # ==============================================================
 
     print("==============================================================")
@@ -296,7 +305,26 @@ def run_solidago_experiment():
             diff2 = diff1[1:] - diff1[:-1]
             loss_smooth = lambda_smooth_B * torch.mean(diff2 ** 2)
             
-        loss = loss_physics + loss_warp_reg + loss_smooth
+        # A. Spectral similarity penalty (Cosine similarity of columns of C)
+        C_norm = raw_model.C / (torch.norm(raw_model.C, dim=0, keepdim=True) + 1e-8)
+        similarity_matrix = torch.matmul(C_norm.t(), C_norm)
+        loss_spec_similarity = torch.sum(torch.triu(similarity_matrix, diagonal=1) ** 2)
+        
+        # B. Baseline parameters L2 regularization (prevents diverging baselines)
+        loss_baseline_reg = (
+            torch.mean(raw_model.baseline_slope**2) + 
+            torch.mean(raw_model.baseline_quadratic**2)
+        )
+        
+        # Combined Loss
+        loss = (
+            loss_physics + 
+            loss_warp_reg + 
+            loss_smooth + 
+            lambda_spec_similarity * loss_spec_similarity + 
+            lambda_baseline_reg * loss_baseline_reg
+        )
+        
         loss.backward()
         optimizer.step()
         raw_model.project_constraints()
@@ -309,7 +337,7 @@ def run_solidago_experiment():
             break
             
         if (epoch + 1) % 200 == 0 or epoch == 0:
-            print(f"    Epoch {epoch+1:4d}/{epochs} | Model Loss: {loss_val:.3e} | Warp Reg: {loss_warp_reg.item():.3e}")
+            print(f"    Epoch {epoch+1:4d}/{epochs} | Model Loss: {loss_val:.3e} | Spec Sim Loss: {loss_spec_similarity.item():.3e} | Baseline Loss: {loss_baseline_reg.item():.3e}")
             
     if final_loss_val == 0.0:
         final_loss_val = loss_val
@@ -416,7 +444,9 @@ def run_solidago_experiment():
         'num_components': num_components,
         'warp_type': warp_type,
         'derivative_order': derivative_order,
-        'sg_window_size': sg_window_size
+        'sg_window_size': sg_window_size,
+        'lambda_spec_similarity': lambda_spec_similarity,
+        'lambda_baseline_reg': lambda_baseline_reg
     }
     generate_report(save_dir, time_start, time_end, epochs_ran, final_loss_val, fit_percent, A, warp_df, B_meta, C_meta, config)
     
