@@ -98,8 +98,57 @@ class BaseChromaPETN(nn.Module, ABC):
             # Reset all parameters to defaults (aligns warp parameters and zeroes GC-MS residuals)
             self.reset_parameters()
             
+            # Compute cross-correlation shifts if init_warp is True
+            shifts = torch.zeros(I)
+            X_aligned = X_cpu.clone()
+            if init_warp:
+                tics = torch.sum(X_cpu, dim=2)
+                mean_tic = torch.mean(tics, dim=0)
+                mean_tic_zero_mean = mean_tic - torch.mean(mean_tic)
+                mean_tic_std = torch.std(mean_tic_zero_mean) + 1e-8
+                mean_tic_norm = mean_tic_zero_mean / (mean_tic_std * J)
+                mean_tic_norm_flipped = torch.flip(mean_tic_norm, dims=[0])
+                
+                for i in range(I):
+                    tic_i = tics[i]
+                    tic_i_zero_mean = tic_i - torch.mean(tic_i)
+                    tic_i_std = torch.std(tic_i_zero_mean) + 1e-8
+                    tic_i_norm = tic_i_zero_mean / tic_i_std
+                    
+                    corr = torch.conv1d(
+                        tic_i_norm.view(1, 1, -1),
+                        mean_tic_norm_flipped.view(1, 1, -1),
+                        padding=J - 1
+                    ).view(-1)
+                    
+                    lags = torch.arange(2 * J - 1) - (J - 1)
+                    best_lag_idx = torch.argmax(corr)
+                    best_lag = lags[best_lag_idx].float()
+                    shifts[i] = best_lag / (J - 1)
+                    
+                shifts = shifts - torch.mean(shifts)
+                
+                # Warp the input tensor along the time axis (dim 1) to align peaks before running SVD
+                for i in range(I):
+                    shift_idx = shifts[i] * (J - 1)
+                    t_orig = torch.arange(J, dtype=torch.float32)
+                    t_new = t_orig + shift_idx  # Shift coordinate
+                    t_new_clamped = torch.clamp(t_new, 0.0, J - 1.0 - 1e-3)
+                    
+                    # Interpolate each wavelength channel
+                    x_i_t = X_cpu[i].t()  # (K, J)
+                    idx_0 = torch.floor(t_new_clamped).long()
+                    idx_1 = idx_0 + 1
+                    w = t_new_clamped - idx_0.float()
+                    
+                    # Gather and interpolate
+                    val_0 = x_i_t[:, idx_0]
+                    val_1 = x_i_t[:, idx_1]
+                    x_warped_t = (1.0 - w.unsqueeze(0)) * val_0 + w.unsqueeze(0) * val_1
+                    X_aligned[i] = x_warped_t.t()
+            
             # Mode 1 (Samples): self.A -> shape (I, R)
-            X_1 = X_cpu.reshape(I, -1)
+            X_1 = X_aligned.reshape(I, -1)
             U_1, S_1, _ = torch.linalg.svd(X_1, full_matrices=False)
             R_1 = min(U_1.shape[1], R)
             scale_1 = S_1[:R_1] ** (1.0 / 3.0)
@@ -108,7 +157,7 @@ class BaseChromaPETN(nn.Module, ABC):
             A_init[:, :R_1] = torch.abs(U_1[:, :R_1]) * scale_1.unsqueeze(0) + 1e-4
             
             # Mode 2 (Time): self.B -> shape (J, R)
-            X_2 = X_cpu.transpose(0, 1).reshape(J, -1)
+            X_2 = X_aligned.transpose(0, 1).reshape(J, -1)
             U_2, S_2, _ = torch.linalg.svd(X_2, full_matrices=False)
             R_2 = min(U_2.shape[1], R)
             scale_2 = S_2[:R_2] ** (1.0 / 3.0)
@@ -117,7 +166,7 @@ class BaseChromaPETN(nn.Module, ABC):
             B_init[:, :R_2] = torch.abs(U_2[:, :R_2]) * scale_2.unsqueeze(0) + 1e-4
             
             # Mode 3 (Spectra): self.C -> shape (K, R)
-            X_3 = X_cpu.transpose(0, 2).reshape(K, -1)
+            X_3 = X_aligned.transpose(0, 2).reshape(K, -1)
             U_3, S_3, _ = torch.linalg.svd(X_3, full_matrices=False)
             R_3 = min(U_3.shape[1], R)
             scale_3 = S_3[:R_3] ** (1.0 / 3.0)
@@ -130,12 +179,21 @@ class BaseChromaPETN(nn.Module, ABC):
             self.B.copy_(B_init.to(device=self.B.device, dtype=self.B.dtype))
             self.C.copy_(C_init.to(device=self.C.device, dtype=self.C.dtype))
             
+            # Initialize warp parameters to the calculated shifts
+            if init_warp:
+                dim2 = self.num_components if self.component_specific_warp else 1
+                shifts_expanded = shifts.unsqueeze(1).expand(-1, dim2).to(device=self.A.device, dtype=self.A.dtype)
+                
+                if self.warp_type in ['linear', 'spline']:
+                    self.beta.copy_(shifts_expanded)
+                elif self.warp_type == 'quadratic':
+                    self.gamma.copy_(shifts_expanded)
+            
             # Project constraints
             self.project_constraints()
             
-            # Warp warm start via cross-correlation
             if init_warp:
-                self.init_warp_from_cross_correlation(X_tensor)
+                print(f"Initialized warping shifts via cross-correlation and aligned SVD input: {shifts.cpu().numpy()}")
             
         except Exception as e:
             import warnings
@@ -221,18 +279,18 @@ class BaseChromaPETN(nn.Module, ABC):
             self.alpha.data -= self.alpha.data.mean(dim=0, keepdim=True)
             self.beta.data -= self.beta.data.mean(dim=0, keepdim=True)
             self.alpha.clamp_(min=-0.2, max=0.2)
-            self.beta.clamp_(min=-0.15, max=0.15)
+            self.beta.clamp_(min=-0.3, max=0.3)
         elif self.warp_type == 'quadratic':
             self.alpha.data -= self.alpha.data.mean(dim=0, keepdim=True)
             self.beta.data -= self.beta.data.mean(dim=0, keepdim=True)
             self.gamma.data -= self.gamma.data.mean(dim=0, keepdim=True)
             self.alpha.clamp_(min=-0.2, max=0.2)
             self.beta.clamp_(min=-0.2, max=0.2)
-            self.gamma.clamp_(min=-0.15, max=0.15)
+            self.gamma.clamp_(min=-0.3, max=0.3)
         elif self.warp_type == 'spline':
             self.beta.data -= self.beta.data.mean(dim=0, keepdim=True)
             self.log_increments.data -= self.log_increments.data.mean(dim=0, keepdim=True)
-            self.beta.clamp_(min=-0.15, max=0.15)
+            self.beta.clamp_(min=-0.3, max=0.3)
             self.log_increments.clamp_(min=-1.0, max=1.0)
 
     def _forward_raw_coo(self, sample_idx, time_idx, spec_idx):

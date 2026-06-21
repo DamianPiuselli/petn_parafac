@@ -14,37 +14,37 @@ This report provides a formal evaluation of the Gray-Box Physics-Embedded Tensor
 | **Spectral Similarity Penalty ($\lambda_{\text{sim}}$)** | 0.0 |
 | **Baseline L2 Penalty ($\lambda_{\text{base}}$)** | 0.0 |
 | **Convergence Epoch** | 1200 |
-| **Final Model Loss (Derivative MSE)** | 5.08971e+00 |
-| **Reconstructed Fit R² (Variance Explained)** | **98.06%** |
+| **Final Model Loss (Derivative MSE)** | 1.32942e+00 |
+| **Reconstructed Fit R² (Variance Explained)** | **99.49%** |
 
 ## 3. Resolved Chemical Components
 The model resolved the localized components. Below are their characteristic physical properties:
 
 | Component | RT apex ($t_{\max}$) | Spectral Maxima ($\lambda_{\max}$) | Mean Score ($+$) | Mean Score ($-$) | Ratio ($+/$-) |
 |---|---|---|---|---|---|
-| **Component 1** | 12.28 min | 318.0 nm | 5297.4 | 13566.0 | 0.39x |
-| **Component 2** | 12.06 min | 318.0 nm | 7755.5 | 380.9 | 20.36x |
+| **Component 1** | 12.24 min | 318.0 nm | 11112.8 | 13474.8 | 0.82x |
+| **Component 2** | 12.76 min | 318.0 nm | 7508.8 | 2203.3 | 3.41x |
 
 > [!IMPORTANT]
-> **Biological Conclusion:** In the localized peak window, the resolved components display distinct profiles. Specifically, **Component 2** is upregulated by **20.36x** in the insecticide-treated roots (`+` treatment). This aligns with ecological studies indicating that herbivore exclusion selects for goldenrod genotypes with elevated allelopathic polyacetylenes (e.g. CDME, which absorbs strongly in the UV range).
+> **Biological Conclusion:** In the localized peak window, the resolved components display distinct profiles. Specifically, **Component 2** is upregulated by **3.41x** in the insecticide-treated roots (`+` treatment). This aligns with ecological studies indicating that herbivore exclusion selects for goldenrod genotypes with elevated allelopathic polyacetylenes (e.g. CDME, which absorbs strongly in the UV range).
 
 ## 4. Detailed Tables
 
 ### Sample Scores (A Loading)
-| vial | Component_1       | Component_2       |
-| -----|-------------------|------------------ |
-| 119  | 68.11457824707031 | 15195.4462890625  |
-| 122  | 10526.71875       | 315.4983215332031 |
-| 121  | 7831.61181640625  | 0.0               |
-| 458  | 19300.484375      | 761.7696533203125 |
+| vial | Component_1      | Component_2       |
+| -----|------------------|------------------ |
+| 119  | 13263.6904296875 | 7860.65283203125  |
+| 122  | 8961.9521484375  | 7156.923828125    |
+| 121  | 7572.44287109375 | 2062.052734375    |
+| 458  | 19377.228515625  | 2344.538330078125 |
 
 ### Learned Warping Parameters (Mean-Centered)
-| vial | trt | alpha                 | beta                 |
-| -----|-----|-----------------------|--------------------- |
-| 119  | +   | 0.01384665071964264   | 0.005190023686736822 |
-| 122  | +   | 0.03312439098954201   | -0.08944305777549744 |
-| 121  | -   | -0.02207697369158268  | 0.05522715300321579  |
-| 458  | -   | -0.024894066154956818 | 0.029025878757238388 |
+| vial | trt | alpha                | beta                  |
+| -----|-----|----------------------|---------------------- |
+| 119  | +   | 0.06094221770763397  | -0.15118087828159332  |
+| 122  | +   | 0.013090060092508793 | -0.039929457008838654 |
+| 121  | -   | -0.04396524280309677 | 0.11227627098560333   |
+| 458  | -   | -0.03006703406572342 | 0.07883407175540924   |
 
 ## 5. Visualizations
 Below are the diagnostic figures illustrating the model alignment and resolved components:
