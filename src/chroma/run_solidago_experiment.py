@@ -199,7 +199,7 @@ def run_solidago_experiment():
     # ==============================================================
     # CONFIGURABLE WINDOW PARAMETERS
     # ==============================================================
-    time_start = 10.0      # Start of retention time window (minutes)
+    time_start = 11.8      # Start of retention time window (minutes)
     time_end = 13.0        # End of retention time window (minutes)
     num_components = 3     # Number of components to resolve within the window
     warp_type = 'linear'   # Warping type: 'linear', 'quadratic', 'spline'
@@ -212,8 +212,8 @@ def run_solidago_experiment():
     lambda_smooth_B = 0.01 # Smoothness penalty on chromatographic profiles
     
     # Custom Constraints
-    lambda_spec_similarity = 100.0 # Restricts resolved spectra (C) from collapsing / being identical
-    lambda_baseline_reg = 0.5      # Restricts baseline parameters from blowing up / diverging
+    lambda_spec_similarity = 0.0 # Restricts resolved spectra (C) from collapsing / being identical
+    lambda_baseline_reg = 0.0      # Restricts baseline parameters from blowing up / diverging
     # ==============================================================
 
     print("==============================================================")
@@ -262,7 +262,6 @@ def run_solidago_experiment():
     # SVD Warm Start
     print("Warm-starting embedding tables using Truncated SVD...")
     model.init_from_svd(X_torch)
-    model.init_warp_from_cross_correlation(X_torch)
     
     # 4. Training Loop (Customized to capture exact epochs)
     optimizer = optim.Adam(model.parameters(), lr=lr)
