@@ -8,44 +8,43 @@ This report provides a formal evaluation of the Gray-Box Physics-Embedded Tensor
 |---|---|
 | **Model Type** | `HPLC_PETN` (HPLC-DAD optimization) |
 | **Sliced Time Window** | **11.80 to 13.00 minutes** |
-| **Resolved Components (R)** | 3 |
+| **Resolved Components (R)** | 2 |
 | **Warping Mode** | `linear` |
 | **Savitzky-Golay Filter** | Order: 2 (derivative), Window size: 11 |
 | **Spectral Similarity Penalty ($\lambda_{\text{sim}}$)** | 0.0 |
 | **Baseline L2 Penalty ($\lambda_{\text{base}}$)** | 0.0 |
-| **Convergence Epoch** | 959 |
-| **Final Model Loss (Derivative MSE)** | 6.37346e-01 |
-| **Reconstructed Fit R² (Variance Explained)** | **99.74%** |
+| **Convergence Epoch** | 1200 |
+| **Final Model Loss (Derivative MSE)** | 4.86897e+00 |
+| **Reconstructed Fit R² (Variance Explained)** | **98.12%** |
 
 ## 3. Resolved Chemical Components
 The model resolved the localized components. Below are their characteristic physical properties:
 
 | Component | RT apex ($t_{\max}$) | Spectral Maxima ($\lambda_{\max}$) | Mean Score ($+$) | Mean Score ($-$) | Ratio ($+/$-) |
 |---|---|---|---|---|---|
-| **Component 1** | 12.20 min | 318.0 nm | 10308.1 | 11963.8 | 0.86x |
-| **Component 2** | 12.70 min | 202.0 nm | 3755.8 | 1297.8 | 2.89x |
-| **Component 3** | 12.68 min | 318.0 nm | 2619.8 | 1109.0 | 2.36x |
+| **Component 1** | 12.30 min | 318.0 nm | 5785.7 | 14437.8 | 0.40x |
+| **Component 2** | 12.06 min | 318.0 nm | 7630.1 | 453.1 | 16.84x |
 
 > [!IMPORTANT]
-> **Biological Conclusion:** In the localized peak window, the resolved components display distinct profiles. Specifically, **Component 2** is upregulated by **2.89x** in the insecticide-treated roots (`+` treatment). This aligns with ecological studies indicating that herbivore exclusion selects for goldenrod genotypes with elevated allelopathic polyacetylenes (e.g. CDME, which absorbs strongly in the UV range).
+> **Biological Conclusion:** In the localized peak window, the resolved components display distinct profiles. Specifically, **Component 2** is upregulated by **16.84x** in the insecticide-treated roots (`+` treatment). This aligns with ecological studies indicating that herbivore exclusion selects for goldenrod genotypes with elevated allelopathic polyacetylenes (e.g. CDME, which absorbs strongly in the UV range).
 
 ## 4. Detailed Tables
 
 ### Sample Scores (A Loading)
-| vial | Component_1      | Component_2       | Component_3       |
-| -----|------------------|-------------------|------------------ |
-| 119  | 11935.5478515625 | 4176.19921875     | 2389.484619140625 |
-| 122  | 8680.6572265625  | 3335.441162109375 | 2850.0703125      |
-| 121  | 7616.60498046875 | 0.0               | 2217.940673828125 |
-| 458  | 16310.9912109375 | 2595.628662109375 | 0.0               |
+| vial | Component_1        | Component_2      |
+| -----|--------------------|----------------- |
+| 119  | 120.73210144042969 | 14738.4541015625 |
+| 122  | 11450.5859375      | 521.6826171875   |
+| 121  | 8338.818359375     | 0.0              |
+| 458  | 20536.87109375     | 906.206298828125 |
 
 ### Learned Warping Parameters (Mean-Centered)
-| vial | trt | alpha                 | beta                  |
-| -----|-----|-----------------------|---------------------- |
-| 119  | +   | 0.06361255794763565   | -0.02412520907819271  |
-| 122  | +   | 0.03903502970933914   | -0.014381475746631622 |
-| 121  | -   | -0.023809339851140976 | 0.013465140014886856  |
-| 458  | -   | -0.07883824408054352  | 0.025041544809937477  |
+| vial | trt | alpha                 | beta                   |
+| -----|-----|-----------------------|----------------------- |
+| 119  | +   | 0.03145895525813103   | -0.0015368545427918434 |
+| 122  | +   | 0.030903074890375137  | -0.08928003907203674   |
+| 121  | -   | -0.03196712210774422  | 0.05954807996749878    |
+| 458  | -   | -0.030394908040761948 | 0.03126881271600723    |
 
 ## 5. Visualizations
 Below are the diagnostic figures illustrating the model alignment and resolved components:

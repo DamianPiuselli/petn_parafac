@@ -25,10 +25,10 @@ def load_solidago_preprocessed(data_dir):
     metadata = pd.read_csv(metadata_path)
     metadata['vial'] = metadata['vial'].astype(str)
     
-    rdata_path = os.path.join(data_dir, "Sa_warp.RData")
+    rdata_path = os.path.join(data_dir, "Sa_pr.RData")
     parsed = rdata.parser.parse_file(rdata_path)
     converted = rdata.conversion.convert(parsed)
-    sa_pr = converted['Sa_warp']
+    sa_pr = converted['Sa_pr']
     
     sample_keys = [str(v) for v in metadata['vial']]
     first_sample = sa_pr[sample_keys[0]]
@@ -201,7 +201,7 @@ def run_solidago_experiment():
     # ==============================================================
     time_start = 11.8      # Start of retention time window (minutes)
     time_end = 13.0        # End of retention time window (minutes)
-    num_components = 3     # Number of components to resolve within the window
+    num_components = 2     # Number of components to resolve within the window
     warp_type = 'linear'   # Warping type: 'linear', 'quadratic', 'spline'
     derivative_order = 2   # 2nd derivative for baseline correction
     sg_window_size = 11    # Savitzky-Golay filter window size (must be odd)
