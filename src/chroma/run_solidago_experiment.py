@@ -262,7 +262,6 @@ def run_solidago_experiment():
     # SVD Warm Start
     print("Warm-starting embedding tables using Truncated SVD...")
     model.init_from_svd(X_torch)
-    model.init_warp_from_cross_correlation(X_torch)
     
     # 4. Training Loop (Customized to capture exact epochs)
     optimizer = optim.Adam(model.parameters(), lr=lr)

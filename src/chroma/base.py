@@ -65,7 +65,7 @@ class BaseChromaPETN(nn.Module, ABC):
             nn.init.constant_(self.log_increments, 0.0)
 
     @torch.no_grad()
-    def init_from_svd(self, X_tensor):
+    def init_from_svd(self, X_tensor, init_warp=True):
         """
         Warm-starts the embedding tables (A, B, C) using unfolded Truncated SVD.
         This gives the network the "average" peak shapes and spectra on Epoch 0,
@@ -75,6 +75,9 @@ class BaseChromaPETN(nn.Module, ABC):
         ----------
         X_tensor : torch.Tensor or numpy.ndarray
             The 3D chromatographic input tensor of shape (I, J, K).
+        init_warp : bool, optional
+            Whether to also warm-start the warping parameters (beta/gamma) 
+            using cross-correlation. Default is True.
         """
         # Ensure input is a PyTorch tensor
         if not isinstance(X_tensor, torch.Tensor):
@@ -129,6 +132,10 @@ class BaseChromaPETN(nn.Module, ABC):
             
             # Project constraints
             self.project_constraints()
+            
+            # Warp warm start via cross-correlation
+            if init_warp:
+                self.init_warp_from_cross_correlation(X_tensor)
             
         except Exception as e:
             import warnings
