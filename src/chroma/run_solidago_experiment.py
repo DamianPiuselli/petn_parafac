@@ -25,10 +25,10 @@ def load_solidago_preprocessed(data_dir):
     metadata = pd.read_csv(metadata_path)
     metadata['vial'] = metadata['vial'].astype(str)
     
-    rdata_path = os.path.join(data_dir, "Sa_pr.RData")
+    rdata_path = os.path.join(data_dir, "Sa_warp.RData")
     parsed = rdata.parser.parse_file(rdata_path)
     converted = rdata.conversion.convert(parsed)
-    sa_pr = converted['Sa_pr']
+    sa_pr = converted['Sa_warp']
     
     sample_keys = [str(v) for v in metadata['vial']]
     first_sample = sa_pr[sample_keys[0]]
