@@ -201,7 +201,7 @@ def run_solidago_experiment():
     # ==============================================================
     time_start = 10.0      # Start of retention time window (minutes)
     time_end = 13.0        # End of retention time window (minutes)
-    num_components = 3     # Number of components to resolve within the window
+    num_components = 2     # Number of components to resolve within the window
     warp_type = 'linear'   # Warping type: 'linear', 'quadratic', 'spline'
     derivative_order = 2   # 2nd derivative for baseline correction
     sg_window_size = 11    # Savitzky-Golay filter window size (must be odd)
@@ -212,8 +212,8 @@ def run_solidago_experiment():
     lambda_smooth_B = 0.01 # Smoothness penalty on chromatographic profiles
     
     # Custom Constraints
-    lambda_spec_similarity = 0.0 # Restricts resolved spectra (C) from collapsing / being identical
-    lambda_baseline_reg = 0.0      # Restricts baseline parameters from blowing up / diverging
+    lambda_spec_similarity = 100.0 # Restricts resolved spectra (C) from collapsing / being identical
+    lambda_baseline_reg = 0.5      # Restricts baseline parameters from blowing up / diverging
     # ==============================================================
 
     print("==============================================================")
