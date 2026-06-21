@@ -136,6 +136,68 @@ class BaseChromaPETN(nn.Module, ABC):
             self.reset_parameters()
 
     @torch.no_grad()
+    def init_warp_from_cross_correlation(self, X_tensor):
+        """
+        Initializes the shift parameter (beta/gamma) using 1D cross-correlation of TICs.
+        This provides a coarse initial alignment to place peaks within the gradient "basin of attraction",
+        solving the problem of non-overlapping peaks.
+        """
+        if not isinstance(X_tensor, torch.Tensor):
+            X_tensor = torch.tensor(X_tensor, dtype=torch.float32)
+            
+        X_cpu = X_tensor.detach().cpu().to(dtype=torch.float32)
+        I, J, K = X_cpu.shape
+        
+        # 1. Compute TICs for each sample (sum over spectral dimension K)
+        tics = torch.sum(X_cpu, dim=2)  # Shape: (I, J)
+        
+        # 2. Compute the mean TIC across all samples as the reference template
+        mean_tic = torch.mean(tics, dim=0)  # Shape: (J,)
+        
+        # Normalize and flip the mean TIC for conv1d
+        mean_tic_zero_mean = mean_tic - torch.mean(mean_tic)
+        mean_tic_std = torch.std(mean_tic_zero_mean) + 1e-8
+        mean_tic_norm = mean_tic_zero_mean / (mean_tic_std * J)
+        mean_tic_norm_flipped = torch.flip(mean_tic_norm, dims=[0])
+        
+        # 3. Calculate cross-correlation shifts
+        shifts = torch.zeros(I, device=X_cpu.device)
+        for i in range(I):
+            tic_i = tics[i]
+            tic_i_zero_mean = tic_i - torch.mean(tic_i)
+            tic_i_std = torch.std(tic_i_zero_mean) + 1e-8
+            tic_i_norm = tic_i_zero_mean / tic_i_std
+            
+            # Cross-correlation via conv1d
+            corr = torch.conv1d(
+                tic_i_norm.view(1, 1, -1),
+                mean_tic_norm_flipped.view(1, 1, -1),
+                padding=J - 1
+            ).view(-1)
+            
+            lags = torch.arange(2 * J - 1) - (J - 1)
+            best_lag_idx = torch.argmax(corr)
+            best_lag = lags[best_lag_idx].float()
+            
+            # Convert lag in time steps to normalized shift coordinate
+            shifts[i] = best_lag / (J - 1)
+            
+        # 4. Mean-center shifts to satisfy translation constraints
+        shifts = shifts - torch.mean(shifts)
+        
+        # 5. Initialize the shift parameter based on warp type and component_specific_warp
+        dim2 = self.num_components if self.component_specific_warp else 1
+        shifts_expanded = shifts.unsqueeze(1).expand(-1, dim2).to(device=self.A.device, dtype=self.A.dtype)
+        
+        if self.warp_type in ['linear', 'spline']:
+            self.beta.copy_(shifts_expanded)
+        elif self.warp_type == 'quadratic':
+            self.gamma.copy_(shifts_expanded)
+            
+        self.project_constraints()
+        print(f"Initialized warping shifts via cross-correlation: {shifts.cpu().numpy()}")
+
+    @torch.no_grad()
     def project_constraints(self):
         """
         Enforces strict physical constraints: non-negativity on A, B, C,

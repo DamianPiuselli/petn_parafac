@@ -195,3 +195,32 @@ def test_chroma_svd_initialization():
     
     assert torch.all(model_gcms.alpha == 0.0)
     assert torch.all(model_gcms.delta_B == 0.0)
+
+def test_chroma_warp_initialization():
+    num_samples = 4
+    num_time = 30
+    num_spec = 20
+    num_components = 3
+    
+    # Generate random positive data
+    X = torch.rand(num_samples, num_time, num_spec) + 0.1
+    
+    for warp_type in ['linear', 'quadratic', 'spline']:
+        for cs_warp in [False, True]:
+            model = HPLC_PETN(
+                num_samples, num_time, num_spec,
+                num_components=num_components,
+                warp_type=warp_type,
+                component_specific_warp=cs_warp
+            )
+            model.init_warp_from_cross_correlation(X)
+            
+            # Assert correct parameter shape
+            dim2 = num_components if cs_warp else 1
+            if warp_type in ['linear', 'spline']:
+                assert model.beta.shape == (num_samples, dim2)
+                # Should not be all zeros since random data has random shifts
+                assert not torch.allclose(model.beta, torch.zeros_like(model.beta))
+            elif warp_type == 'quadratic':
+                assert model.gamma.shape == (num_samples, dim2)
+                assert not torch.allclose(model.gamma, torch.zeros_like(model.gamma))
