@@ -212,8 +212,8 @@ def run_solidago_experiment():
     lambda_smooth_B = 0.01 # Smoothness penalty on chromatographic profiles
     
     # Custom Constraints
-    lambda_spec_similarity = 100.0 # Restricts resolved spectra (C) from collapsing / being identical
-    lambda_baseline_reg = 0.5      # Restricts baseline parameters from blowing up / diverging
+    lambda_spec_similarity = 0.0 # Restricts resolved spectra (C) from collapsing / being identical
+    lambda_baseline_reg = 0.0      # Restricts baseline parameters from blowing up / diverging
     # ==============================================================
 
     print("==============================================================")
