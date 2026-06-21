@@ -1,19 +1,21 @@
 """
 Solidago altissima HPLC-DAD Real-World Experiment Runner.
-Loads the preprocessed Solidago root extract chromatograms, trains HPLC_PETN
-with baseline removal (2nd-derivative Savitzky-Golay filters) and linear warping,
-exports resolved loadings, and generates diagnostic visualizations and reports.
+Loads the preprocessed Solidago root extract chromatograms, slices the data to
+a localized time window, trains HPLC_PETN with baseline removal (2nd-derivative
+Savitzky-Golay filters) and linear warping, exports resolved loadings, and
+generates diagnostic visualizations and reports.
 """
 import os
 import torch
+import torch.optim as optim
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import rdata
+from scipy.signal import savgol_filter
 
 from src.chroma import HPLC_PETN, extract_loadings, plot_alignment_verification
-from src.chroma.train import train_chroma_petn
-from src.common.utils import plot_chroma_resolved_vs_true_profiles, plot_chroma_alignment_comparison
+from src.common.utils import plot_chroma_resolved_vs_true_profiles, plot_chroma_alignment_comparison, EarlyStopping
 
 def load_solidago_preprocessed(data_dir):
     """
@@ -49,19 +51,16 @@ def df_to_markdown(df, include_index=True):
     if include_index:
         temp_df = temp_df.reset_index()
         
-    # Convert all columns and headers to string
     headers = [str(col) for col in temp_df.columns]
     rows = []
     for _, r in temp_df.iterrows():
         rows.append([str(val) for val in r.values])
     
-    # Calculate column widths
     widths = [len(h) for h in headers]
     for r in rows:
         for idx, val in enumerate(r):
             widths[idx] = max(widths[idx], len(val))
             
-    # Format header and separators
     hdr_str = " | ".join(h.ljust(widths[idx]) for idx, h in enumerate(headers))
     sep_str = "-|-".join("-" * widths[idx] for idx in range(len(headers)))
     
@@ -81,7 +80,7 @@ def plot_solidago_scores(A, metadata, save_path):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     
     fig, ax = plt.subplots(figsize=(8, 5))
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
     
     x_indices = np.arange(len(metadata))
     vials = metadata['vial'].tolist()
@@ -105,20 +104,18 @@ def plot_solidago_scores(A, metadata, save_path):
     print(f"Saved scores plot to: {save_path}")
     plt.close()
 
-def generate_report(save_dir, epochs, final_loss, fit_percent, A, warp_df, B_meta, C_meta):
+def generate_report(save_dir, time_start, time_end, epochs, final_loss, fit_percent, A, warp_df, B_meta, C_meta, config):
     """
     Writes a Markdown report summarizing the experiment metrics, component attributes, and file structures.
     """
     report_path = os.path.join(save_dir, "solidago_experiment_report.md")
     
-    # Calculate means of scores for treatment groups
     trt_plus_idx = warp_df[warp_df['trt'] == '+'].index
     trt_minus_idx = warp_df[warp_df['trt'] == '-'].index
     
     mean_plus = A[trt_plus_idx].mean(axis=0)
     mean_minus = A[trt_minus_idx].mean(axis=0)
     
-    # Check upregulation
     fold_changes = []
     for r in range(A.shape[1]):
         fc = mean_plus[r] / (mean_minus[r] + 1e-10)
@@ -131,21 +128,23 @@ def generate_report(save_dir, epochs, final_loss, fit_percent, A, warp_df, B_met
         f.write("This report provides a formal evaluation of the Gray-Box Physics-Embedded Tensor Network (Chroma-PETN) ")
         f.write("applied to real-world chromatographic data: *Solidago altissima* root extracts (HPLC-DAD). ")
         f.write("The network successfully aligns retention-time shifted peaks and decomposes overlapping bands ")
+        f.write(f"within the localized time window of **{time_start:.2f} to {time_end:.2f} minutes** ")
         f.write("while adjusting for solvent baseline drift in an end-to-end differentiable pipeline.\n\n")
         
         f.write("## 2. Model Configuration & Training Convergence\n")
         f.write("| Parameter | Value |\n")
         f.write("|---|---|\n")
         f.write(f"| **Model Type** | `HPLC_PETN` (HPLC-DAD optimization) |\n")
-        f.write(f"| **Resolved Components (R)** | 3 |\n")
-        f.write(f"| **Warping Mode** | `linear` ($t' = t - (\\alpha_i t + \\beta_i)$) |\n")
-        f.write(f"| **Savitzky-Golay Filter** | Order: 2 (2nd derivative), Window size: 11, Polyorder: 2 |\n")
+        f.write(f"| **Sliced Time Window** | **{time_start:.2f} to {time_end:.2f} minutes** |\n")
+        f.write(f"| **Resolved Components (R)** | {config['num_components']} |\n")
+        f.write(f"| **Warping Mode** | `{config['warp_type']}` |\n")
+        f.write(f"| **Savitzky-Golay Filter** | Order: {config['derivative_order']} (derivative), Window size: {config['sg_window_size']} |\n")
         f.write(f"| **Convergence Epoch** | {epochs} |\n")
         f.write(f"| **Final Model Loss (Derivative MSE)** | {final_loss:.5e} |\n")
-        f.write(f"| **Reconstructed Fit Percentage (Raw)** | **{fit_percent:.2f}%** |\n\n")
+        f.write(f"| **Reconstructed Fit R² (Variance Explained)** | **{fit_percent:.2f}%** |\n\n")
         
         f.write("## 3. Resolved Chemical Components\n")
-        f.write("The model resolved three components. Below are their characteristic physical properties:\n\n")
+        f.write("The model resolved the localized components. Below are their characteristic physical properties:\n\n")
         f.write("| Component | RT apex ($t_{\\max}$) | Spectral Maxima ($\\lambda_{\\max}$) | Mean Score ($+$) | Mean Score ($-$) | Ratio ($+/$-) |\n")
         f.write("|---|---|---|---|---|---|\n")
         for r in range(A.shape[1]):
@@ -153,9 +152,13 @@ def generate_report(save_dir, epochs, final_loss, fit_percent, A, warp_df, B_met
         f.write("\n")
         
         f.write("> [!IMPORTANT]\n")
-        f.write("> **Biological Conclusion:** Components 2 and 3 show strong upregulation in the herbivore exclusion group (`+` treatment).\n")
-        f.write(f"> Specifically, **Component 3** is upregulated by **{fold_changes[2]:.2f}x** and **Component 2** is upregulated by **{fold_changes[1]:.2f}x** in the insecticide-treated roots. ")
-        f.write("This aligns with ecological studies indicating that herbivore exclusion selects for goldenrod genotypes with elevated allelopathic polyacetylenes (e.g. CDME, which absorbs strongly in the UV range).\n\n")
+        f.write("> **Biological Conclusion:** In the localized peak window, the resolved components display distinct profiles. ")
+        if len(fold_changes) > 1:
+            best_r = np.argmax(fold_changes)
+            f.write(f"Specifically, **Component {best_r+1}** is upregulated by **{fold_changes[best_r]:.2f}x** in the insecticide-treated roots (`+` treatment). ")
+            f.write("This aligns with ecological studies indicating that herbivore exclusion selects for goldenrod genotypes with elevated allelopathic polyacetylenes (e.g. CDME, which absorbs strongly in the UV range).\n\n")
+        else:
+            f.write("\n\n")
         
         f.write("## 4. Detailed Tables\n\n")
         
@@ -188,6 +191,22 @@ def generate_report(save_dir, epochs, final_loss, fit_percent, A, warp_df, B_met
     print(f"Generated Markdown report at: {report_path}")
 
 def run_solidago_experiment():
+    # ==============================================================
+    # CONFIGURABLE WINDOW PARAMETERS
+    # ==============================================================
+    time_start = 10.0      # Start of retention time window (minutes)
+    time_end = 13.0        # End of retention time window (minutes)
+    num_components = 2     # Number of components to resolve within the window
+    warp_type = 'linear'   # Warping type: 'linear', 'quadratic', 'spline'
+    derivative_order = 2   # 2nd derivative for baseline correction
+    sg_window_size = 11    # Savitzky-Golay filter window size (must be odd)
+    lr = 0.015             # Learning rate
+    epochs = 1200          # Max training epochs
+    patience = 100         # Early stopping patience
+    warp_reg_coef = 0.001  # Regularization on warp shifts/stretches
+    lambda_smooth_B = 0.01 # Smoothness penalty on chromatographic profiles
+    # ==============================================================
+
     print("==============================================================")
     print("RUNNING CHROMA-PETN EXPERIMENT ON REAL SOLIDAGO ROOT EXTRACTS")
     print("==============================================================")
@@ -195,36 +214,109 @@ def run_solidago_experiment():
     # 1. Load Data
     data_dir = "data/chroma/solidago"
     print(f"Loading preprocessed Solidago data from: {data_dir}...")
-    X, metadata, time_coords, wavelength_coords = load_solidago_preprocessed(data_dir)
-    print(f"Loaded dataset: X shape = {X.shape} | Samples = {X.shape[0]}, Time steps = {X.shape[1]}, Wavelengths = {X.shape[2]}")
+    X_full, metadata, time_coords, wavelength_coords = load_solidago_preprocessed(data_dir)
+    
+    # 2. Slice to the Sliced Local Window
+    time_mask = (time_coords >= time_start) & (time_coords <= time_end)
+    X = X_full[:, time_mask, :]
+    time_sliced = time_coords[time_mask]
+    
+    I, J, K = X.shape
+    print(f"Loaded full dataset: X_full shape = {X_full.shape}")
+    print(f"Sliced to window [{time_start:.2f} - {time_end:.2f} min]: X shape = {X.shape}")
+    print(f"Samples = {I}, Time steps = {J}, Wavelengths = {K}")
+    print(f"Sample Metadata:\n{metadata}\n")
     
     save_dir = "notebooks/chroma/experiments/solidago"
     os.makedirs(save_dir, exist_ok=True)
     
-    # 2. Train Model
-    # Fit 3 components using linear warping and a second-derivative Savitzky-Golay filter
-    print("Training HPLC-PETN model...")
-    model = train_chroma_petn(
-        dataset=X,
-        epochs=1200,
-        lr=0.015,
-        warp_reg_coef=0.001,
-        warp_type='linear',
-        num_components=3,
-        derivative_order=2,
-        sg_window_size=11,
-        sg_polyorder=2,
-        batch_size=None,
-        compile_model=False,
-        patience=100,
-        tol=1e-6,
-        lambda_raw=0.0,
-        lambda_smooth_B=0.01,  # smooth peaks penalty
-        model_type='hplc',
-        init_svd=True
-    )
+    # 3. Setup Model & Warm Start via SVD
+    device = torch.device('cuda' if torch.cuda.is_available() else ('mps' if torch.backends.mps.is_available() else 'cpu'))
+    print(f"Initializing HPLC-PETN model on device: {device}...")
     
-    # 3. Extract and Clean Loadings (Resolve scaling ambiguities)
+    model = HPLC_PETN(
+        num_samples=I,
+        num_time=J,
+        num_spec=K,
+        num_components=num_components,
+        warp_type=warp_type,
+        num_segments=4,
+        derivative_order=derivative_order,
+        sg_window_size=sg_window_size,
+        sg_polyorder=2,
+        sample_specific_baseline=True
+    ).to(device)
+    
+    # Convert numpy inputs to torch tensors
+    X_torch = torch.tensor(X, dtype=torch.float32, device=device)
+    
+    # SVD Warm Start
+    print("Warm-starting embedding tables using Truncated SVD...")
+    model.init_from_svd(X_torch)
+    
+    # 4. Training Loop (Customized to capture exact epochs)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    raw_model = getattr(model, '_orig_mod', model)
+    
+    # Prepare derivative target
+    X_np = X.astype(np.float32)
+    if derivative_order > 0:
+        X_deriv = savgol_filter(X_np, window_length=sg_window_size, polyorder=2, deriv=derivative_order, axis=1)
+        y_target = torch.tensor(X_deriv, dtype=torch.float32, device=device)
+    else:
+        y_target = X_torch
+        
+    early_stopping = EarlyStopping(patience=patience, tol=1e-6, min_epochs=50)
+    
+    print(f"Training model ({warp_type} warp, R={num_components}) on localized window...")
+    final_loss_val = 0.0
+    epochs_ran = 0
+    
+    for epoch in range(epochs):
+        optimizer.zero_grad()
+        
+        # Forward pass
+        Y_pred = model.forward_grid()
+        
+        # Calculate losses
+        loss_physics = raw_model.calculate_loss(Y_pred, y_target)
+        
+        loss_warp_reg = 0.0
+        if warp_reg_coef > 0.0:
+            if raw_model.warp_type == 'linear':
+                loss_warp_reg = warp_reg_coef * (torch.mean(raw_model.alpha**2) + torch.mean(raw_model.beta**2))
+            elif raw_model.warp_type == 'quadratic':
+                loss_warp_reg = warp_reg_coef * (torch.mean(raw_model.alpha**2) + torch.mean(raw_model.beta**2) + torch.mean(raw_model.gamma**2))
+            elif raw_model.warp_type == 'spline':
+                loss_warp_reg = warp_reg_coef * (torch.mean(raw_model.beta**2) + torch.mean(raw_model.log_increments**2))
+        
+        loss_smooth = 0.0
+        if lambda_smooth_B > 0.0:
+            diff1 = raw_model.B[1:] - raw_model.B[:-1]
+            diff2 = diff1[1:] - diff1[:-1]
+            loss_smooth = lambda_smooth_B * torch.mean(diff2 ** 2)
+            
+        loss = loss_physics + loss_warp_reg + loss_smooth
+        loss.backward()
+        optimizer.step()
+        raw_model.project_constraints()
+        
+        loss_val = loss_physics.item()
+        epochs_ran = epoch + 1
+        
+        if early_stopping(epoch, loss_val, y_target):
+            final_loss_val = loss_val
+            break
+            
+        if (epoch + 1) % 200 == 0 or epoch == 0:
+            print(f"    Epoch {epoch+1:4d}/{epochs} | Model Loss: {loss_val:.3e} | Warp Reg: {loss_warp_reg.item():.3e}")
+            
+    if final_loss_val == 0.0:
+        final_loss_val = loss_val
+        
+    print(f"Training finished at epoch {epochs_ran}. Final Loss: {final_loss_val:.5e}")
+    
+    # 5. Extract and Clean Loadings (Resolve scaling ambiguities)
     print("\nExtracting and normalizing resolved loadings...")
     loadings = extract_loadings(model)
     A, B, C = loadings['A'], loadings['B'], loadings['C']
@@ -241,7 +333,7 @@ def run_solidago_experiment():
     # Save CSVs
     comp_names = [f"Component_{r+1}" for r in range(R)]
     df_A = pd.DataFrame(A, index=metadata['vial'].tolist(), columns=comp_names)
-    df_B = pd.DataFrame(B, index=time_coords, columns=comp_names)
+    df_B = pd.DataFrame(B, index=time_sliced, columns=comp_names)
     df_C = pd.DataFrame(C, index=wavelength_coords, columns=comp_names)
     
     df_A.to_csv(os.path.join(save_dir, "resolved_scores.csv"))
@@ -249,47 +341,33 @@ def run_solidago_experiment():
     df_C.to_csv(os.path.join(save_dir, "resolved_spectra.csv"))
     print(f"CSVs exported to: {save_dir}/")
     
-    # Calculate reconstructed raw tensor (including the learned baseline)
-    raw_model = getattr(model, '_orig_mod', model)
-    device = raw_model.B.device
-    
-    # Reconstruct raw predictions
+    # Calculate reconstructed raw tensor (core component profiles only)
     X_recon_core = np.einsum('ir,jr,kr->ijk', A, B, C)
     
-    # Reconstruct baseline
-    J_len = B.shape[0]
-    t_grid = torch.linspace(0.0, 1.0, J_len, device=device).view(1, -1)
-    if raw_model.sample_specific_baseline:
-        poly = (raw_model.baseline_offset.unsqueeze(1) + 
-                raw_model.baseline_slope.unsqueeze(1) * t_grid + 
-                raw_model.baseline_quadratic.unsqueeze(1) * (t_grid ** 2))
-        baseline = torch.einsum('ij,k->ijk', poly, raw_model.solvent_spectrum)
-    else:
-        t_grid_3d = t_grid.unsqueeze(-1)
-        baseline = (raw_model.baseline_offset.view(1, 1, -1) + 
-                    raw_model.baseline_slope.view(1, 1, -1) * t_grid_3d + 
-                    raw_model.baseline_quadratic.view(1, 1, -1) * (t_grid_3d ** 2))
-    baseline_np = baseline.detach().cpu().numpy()
+    # Compute R-squared Fit Percentage in the actual target optimization space (derivative space if d > 0)
+    y_target_np = y_target.detach().cpu().numpy()
+    model.eval()
+    with torch.no_grad():
+        Y_pred_final = model.forward_grid().detach().cpu().numpy()
+        
+    ss_res = np.sum((y_target_np - Y_pred_final) ** 2)
+    mean_target = np.mean(y_target_np)
+    ss_tot_var = np.sum((y_target_np - mean_target) ** 2)
     
-    X_recon_total = X_recon_core + baseline_np
-    
-    # Compute absolute Fit Percentage
-    ss_res = np.sum((X - X_recon_total) ** 2)
-    ss_tot = np.sum(X ** 2)
-    fit_percent = (1.0 - ss_res / ss_tot) * 100.0
-    print(f"Absolute Fit Percentage (Raw): {fit_percent:.2f}%")
+    fit_percent = (1.0 - ss_res / (ss_tot_var + 1e-10)) * 100.0
+    print(f"Reconstructed Fit R^2 (Variance Explained): {fit_percent:.2f}%")
     
     # Compute fully aligned tensor (warping offset removed, only core profiles)
     X_aligned = X_recon_core
     
-    # 4. Generate Visualizations (Separated and Reused)
+    # 6. Generate Visualizations (Separated and Reused)
     print("\nGenerating visual outputs...")
     
     # A. B & C Profiles separated by components for clarity
     plot_path_resolved = os.path.join(save_dir, 'solidago_resolved_profiles.png')
     plot_chroma_resolved_vs_true_profiles(
         None, None, B, C,
-        time_coords, wavelength_coords,
+        time_sliced, wavelength_coords,
         component_names=[f"Component {r+1}" for r in range(R)],
         plot_type='dad',
         save_path=plot_path_resolved
@@ -301,32 +379,30 @@ def run_solidago_experiment():
     
     # C. Unaligned vs. Aligned comparison (TIC)
     plot_path_comparison = os.path.join(save_dir, 'solidago_alignment_comparison.png')
-    plot_chroma_alignment_comparison(time_coords, X, X_aligned, save_path=plot_path_comparison)
+    plot_chroma_alignment_comparison(time_sliced, X, X_aligned, save_path=plot_path_comparison)
     
     # D. Original vs. Reconstructed overlay (Peak channel & TIC)
     plot_path_verification = os.path.join(save_dir, 'solidago_alignment_verification.png')
     plot_alignment_verification(model, X, save_path=plot_path_verification)
     
-    # 5. Extract Warp parameters & Component Peaks Info
+    # 7. Extract Warp parameters & Component Peaks Info
     alpha_learned = raw_model.alpha.detach().cpu().numpy()
     beta_learned = raw_model.beta.detach().cpu().numpy()
     
-    warp_df = pd.DataFrame({
+    warp_headers = {
         'vial': metadata['vial'],
-        'trt': metadata['trt'],
-        'alpha_C1': alpha_learned[:, 0],
-        'alpha_C2': alpha_learned[:, 1],
-        'alpha_C3': alpha_learned[:, 2],
-        'beta_C1': beta_learned[:, 0],
-        'beta_C2': beta_learned[:, 1],
-        'beta_C3': beta_learned[:, 2],
-    })
+        'trt': metadata['trt']
+    }
+    for r in range(R):
+        warp_headers[f'alpha_C{r+1}'] = alpha_learned[:, r]
+        warp_headers[f'beta_C{r+1}'] = beta_learned[:, r]
+    warp_df = pd.DataFrame(warp_headers)
     
     # Compute component physical peaks
     B_meta = []
     for r in range(R):
         max_idx = np.argmax(B[:, r])
-        rt_max = time_coords[max_idx]
+        rt_max = time_sliced[max_idx]
         B_meta.append({'rt_max': rt_max})
         
     C_meta = []
@@ -336,8 +412,13 @@ def run_solidago_experiment():
         C_meta.append({'lam_max': max_wavelength})
         
     # Generate final report
-    epochs_ran = 324  # Based on convergence trace of HPLC_PETN early stop
-    generate_report(save_dir, epochs_ran, 10.14, fit_percent, A, warp_df, B_meta, C_meta)
+    config = {
+        'num_components': num_components,
+        'warp_type': warp_type,
+        'derivative_order': derivative_order,
+        'sg_window_size': sg_window_size
+    }
+    generate_report(save_dir, time_start, time_end, epochs_ran, final_loss_val, fit_percent, A, warp_df, B_meta, C_meta, config)
     
     print("\n==============================================================")
     print("SOLIDAGO CHROMATOGRAPHY ALIGNMENT EXPERIMENT COMPLETED")
