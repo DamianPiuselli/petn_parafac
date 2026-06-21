@@ -13,40 +13,40 @@ This report provides a formal evaluation of the Gray-Box Physics-Embedded Tensor
 | **Savitzky-Golay Filter** | Order: 2 (derivative), Window size: 11 |
 | **Spectral Similarity Penalty ($\lambda_{\text{sim}}$)** | 0.0 |
 | **Baseline L2 Penalty ($\lambda_{\text{base}}$)** | 0.0 |
-| **Convergence Epoch** | 414 |
-| **Final Model Loss (Derivative MSE)** | 5.59266e+00 |
-| **Reconstructed Fit R² (Variance Explained)** | **97.56%** |
+| **Convergence Epoch** | 1200 |
+| **Final Model Loss (Derivative MSE)** | 3.27710e+00 |
+| **Reconstructed Fit R² (Variance Explained)** | **92.13%** |
 
 ## 3. Resolved Chemical Components
 The model resolved the localized components. Below are their characteristic physical properties:
 
 | Component | RT apex ($t_{\max}$) | Spectral Maxima ($\lambda_{\max}$) | Mean Score ($+$) | Mean Score ($-$) | Ratio ($+/$-) |
 |---|---|---|---|---|---|
-| **Component 1** | 12.32 min | 318.0 nm | 1842.6 | 13121.1 | 0.14x |
-| **Component 2** | 12.06 min | 318.0 nm | 6643.4 | 497.5 | 13.35x |
-| **Component 3** | 12.20 min | 318.0 nm | 4667.7 | 503.7 | 9.27x |
-| **Component 4** | 12.38 min | 202.0 nm | 10.5 | 327.4 | 0.03x |
+| **Component 1** | 12.30 min | 318.0 nm | 3331.2 | 11377.7 | 0.29x |
+| **Component 2** | 12.08 min | 202.0 nm | 3004.2 | 581.1 | 5.17x |
+| **Component 3** | 12.22 min | 318.0 nm | 6966.9 | 1664.6 | 4.19x |
+| **Component 4** | 12.38 min | 318.0 nm | 2900.4 | 12797.5 | 0.23x |
 
 > [!IMPORTANT]
-> **Biological Conclusion:** In the localized peak window, the resolved components display distinct profiles. Specifically, **Component 2** is upregulated by **13.35x** in the insecticide-treated roots (`+` treatment). This aligns with ecological studies indicating that herbivore exclusion selects for goldenrod genotypes with elevated allelopathic polyacetylenes (e.g. CDME, which absorbs strongly in the UV range).
+> **Biological Conclusion:** In the localized peak window, the resolved components display distinct profiles. Specifically, **Component 2** is upregulated by **5.17x** in the insecticide-treated roots (`+` treatment). This aligns with ecological studies indicating that herbivore exclusion selects for goldenrod genotypes with elevated allelopathic polyacetylenes (e.g. CDME, which absorbs strongly in the UV range).
 
 ## 4. Detailed Tables
 
 ### Sample Scores (A Loading)
-| vial | Component_1       | Component_2        | Component_3        | Component_4        |
-| -----|-------------------|--------------------|--------------------|------------------- |
-| 119  | 615.3922119140625 | 12088.2353515625   | 1430.9666748046875 | 18.627599716186523 |
-| 122  | 3069.852783203125 | 1198.4752197265625 | 7904.44140625      | 2.4612178802490234 |
-| 121  | 7571.75830078125  | 228.27447509765625 | 94.5107421875      | 435.3424377441406  |
-| 458  | 18670.48046875    | 766.6322631835938  | 912.8704223632812  | 219.44827270507812 |
+| vial | Component_1      | Component_2       | Component_3       | Component_4       |
+| -----|------------------|-------------------|-------------------|------------------ |
+| 119  | 3530.91943359375 | 4805.12451171875  | 5582.02587890625  | 5541.93896484375  |
+| 122  | 3131.50390625    | 1203.25537109375  | 8351.6806640625   | 258.84033203125   |
+| 121  | 4301.951171875   | 898.2981567382812 | 2794.25927734375  | 23445.72265625    |
+| 458  | 18453.537109375  | 263.8547058105469 | 534.9168701171875 | 2149.249755859375 |
 
 ### Learned Warping Parameters (Mean-Centered)
-| vial | trt | alpha_C1              | beta_C1              | alpha_C2              | beta_C2              | alpha_C3              | beta_C3               | alpha_C4             | beta_C4              |
-| -----|-----|-----------------------|----------------------|-----------------------|----------------------|-----------------------|-----------------------|----------------------|--------------------- |
-| 119  | +   | 0.029933800920844078  | 0.013054651208221912 | -0.018611524254083633 | 0.011248299852013588 | 0.08006244152784348   | 0.06724712252616882   | -0.1761806309223175  | -0.14785003662109375 |
-| 122  | +   | 0.0019983453676104546 | -0.04654946178197861 | 0.029844747856259346  | -0.09139850735664368 | -0.007433662191033363 | 0.001339346170425415  | 0.20000000298023224  | 0.13120928406715393  |
-| 121  | -   | -0.014634557068347931 | 0.020343665033578873 | -0.06841541826725006  | 0.04073287919163704  | 0.015623587183654308  | -0.06120699644088745  | -0.07261103391647339 | -0.06560561060905457 |
-| 458  | -   | -0.017297588288784027 | 0.013151144608855247 | 0.057182200253009796  | 0.0394173227250576   | -0.08825236558914185  | -0.007379472255706787 | 0.04843167960643768  | 0.08224637806415558  |
+| vial | trt | alpha_C1             | beta_C1               | alpha_C2              | beta_C2              | alpha_C3             | beta_C3               | alpha_C4             | beta_C4             |
+| -----|-----|----------------------|-----------------------|-----------------------|----------------------|----------------------|-----------------------|----------------------|-------------------- |
+| 119  | +   | -0.0392216257750988  | -0.058972880244255066 | -0.021135631948709488 | -0.08022560179233551 | 0.03970443457365036  | -0.06570105999708176  | 0.036096956580877304 | -0.1334909349679947 |
+| 122  | +   | -0.0094557860866189  | -0.010259542614221573 | 0.1300470381975174    | 0.06692735850811005  | 0.004347092472016811 | -0.006781463511288166 | -0.10206829011440277 | -0.0979170873761177 |
+| 121  | -   | 0.09489516913890839  | 0.034501079469919205  | 0.09640860557556152   | 0.07809153199195862  | -0.08657971769571304 | 0.10341668874025345   | 0.10984420776367188  | 0.1494663506746292  |
+| 458  | -   | -0.04621776193380356 | 0.034731339663267136  | -0.20000000298023224  | -0.06479328870773315 | 0.0425281897187233   | -0.03093416802585125  | -0.04387287050485611 | 0.08194166421890259 |
 
 ## 5. Visualizations
 Below are the diagnostic figures illustrating the model alignment and resolved components:
