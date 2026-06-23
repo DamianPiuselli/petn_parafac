@@ -11,8 +11,10 @@ from src.eem.model import PETNParafac
 from src.eem.loss import masked_mse_loss
 from src.eem.train import match_and_align_components
 
-from src.chroma.generator import ChromatographicDataGenerator
-from src.chroma import HPLC_PETN
+from src.chroma.generator import GCMSDataGenerator, HPLCDADDataGenerator, ChromatographicDataGenerator
+from src.chroma import HPLC_PETN, GCMS_PETN
+from src.common.utils import EarlyStopping
+
 
 
 # --- Helper functions ---
@@ -55,12 +57,21 @@ def match_and_align_chroma_components(A_true, B_true, C_true, A_pred, B_pred, C_
         
     # Scale ambiguity resolution
     for r in range(R):
-        norm_b = np.linalg.norm(B_pred_ordered[:, r])
-        norm_c = np.linalg.norm(C_pred_ordered[:, r])
-        if norm_b > 0 and norm_c > 0:
-            B_pred_ordered[:, r] /= norm_b
-            C_pred_ordered[:, r] /= norm_c
-            A_pred_ordered[:, r] *= (norm_b * norm_c)
+        max_b_true = np.max(B_true[:, r])
+        max_c_true = np.max(C_true[:, r])
+        
+        max_b_pred = np.max(B_pred_ordered[:, r])
+        max_c_pred = np.max(C_pred_ordered[:, r])
+        
+        max_b_pred = max_b_pred if max_b_pred > 1e-8 else 1.0
+        max_c_pred = max_c_pred if max_c_pred > 1e-8 else 1.0
+        
+        s_b = max_b_true / max_b_pred
+        s_c = max_c_true / max_c_pred
+        
+        B_pred_ordered[:, r] *= s_b
+        C_pred_ordered[:, r] *= s_c
+        A_pred_ordered[:, r] /= (s_b * s_c)
             
     # Calculate recovery R^2 similarity
     b_sims = [calculate_cosine_similarity(B_pred_ordered[:, r], B_true[:, r]) for r in range(R)]
@@ -512,6 +523,30 @@ st.markdown("""
 st.sidebar.markdown("<h2>📁 Development Track</h2>", unsafe_allow_html=True)
 track_mode = st.sidebar.selectbox("Select Track Mode", ["EEM Spectroscopy", "Chromatography Warping"])
 
+# --- Main Dashboard Header ---
+if track_mode == "EEM Spectroscopy":
+    st.markdown("""
+    <div class="header-card">
+        <div class="header-badge">EEM Spectroscopy Track</div>
+        <h1 class="header-title">🔬 PETN-PARAFAC Cuvette Simulator</h1>
+        <p class="header-subtitle">
+            An interactive gray-box solver and simulator that resolves overlapping chemical fluorophore loadings, 
+            compensates for non-linear Inner Filter Effects (IFE) via physical cuvette constraints, and interpolates through Rayleigh/Raman scattering diagonals.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <div class="header-card">
+        <div class="header-badge">Chromatography Alignment Track</div>
+        <h1 class="header-title">🌀 Chroma-PETN Alignment Simulator</h1>
+        <p class="header-subtitle">
+            An interactive gray-box solver and simulator that resolves retention time shifting across multiple chromatographic runs 
+            using differentiable warping coordinates, area-preserving interpolation, and Savitzky-Golay filters.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
 # --- Sidebar Configuration Panels ---
 if track_mode == "EEM Spectroscopy":
     st.sidebar.markdown("<h2>1. Data Simulation</h2>", unsafe_allow_html=True)
@@ -527,6 +562,8 @@ if track_mode == "EEM Spectroscopy":
     ui_delay = st.sidebar.slider("UI Update Delay (seconds)", min_value=0.0, max_value=2.0, value=0.1, step=0.05)
 else:
     st.sidebar.markdown("<h2>1. Data Simulation</h2>", unsafe_allow_html=True)
+    chroma_type = st.sidebar.selectbox("Select Technique", ["HPLC-DAD", "GC-MS"])
+    
     chroma_noise_std = st.sidebar.slider("Measurement Noise (Std Dev)", min_value=0.0001, max_value=0.05, value=0.01, step=0.001, format="%.4f")
     chroma_max_shift = st.sidebar.slider("Max Shift (Translation)", min_value=0.0, max_value=0.15, value=0.05, step=0.01, format="%.2f")
     chroma_max_stretch = st.sidebar.slider("Max Stretch (Scaling)", min_value=0.0, max_value=0.20, value=0.08, step=0.01, format="%.2f")
@@ -537,20 +574,40 @@ else:
     chroma_warp_type = "linear"
     if chroma_model_arch == "Chroma-PETN":
         chroma_warp_type = st.sidebar.selectbox("Solver Warp Model Type", ["linear", "quadratic", "spline"])
-    chroma_lr = st.sidebar.slider("Learning Rate", min_value=0.001, max_value=0.05, value=0.015, step=0.001, format="%.3f")
-    total_epochs = st.sidebar.number_input("Total Training Epochs", min_value=100, max_value=5000, value=600, step=100)
+    chroma_default_lr = 0.025 if chroma_type == "GC-MS" else 0.015
+    chroma_lr = st.sidebar.slider("Learning Rate", min_value=0.001, max_value=0.05, value=chroma_default_lr, step=0.001, format="%.3f")
+    total_epochs = st.sidebar.number_input("Total Training Epochs", min_value=100, max_value=5000, value=2000, step=100)
     epochs_per_update = st.sidebar.slider("Epochs per UI Update", min_value=5, max_value=100, value=25, step=5)
     ui_delay = st.sidebar.slider("UI Update Delay (seconds)", min_value=0.0, max_value=2.0, value=0.1, step=0.05)
     
-    st.sidebar.markdown("<h2>3. Derivative Configuration</h2>", unsafe_allow_html=True)
-    chroma_enable_deriv = st.sidebar.checkbox("Enable Savitzky-Golay Derivative", value=False)
-    chroma_deriv_order = 1
-    chroma_sg_window_size = 11
-    if chroma_enable_deriv:
-        chroma_deriv_order = st.sidebar.selectbox("Derivative Order", [1, 2], index=1)
-        chroma_sg_window_size = st.sidebar.selectbox("SG Window Size", [5, 7, 9, 11, 13, 15, 17], index=3)
+    if chroma_type == "HPLC-DAD":
+        st.sidebar.markdown("<h2>3. Baseline & Derivative</h2>", unsafe_allow_html=True)
+        chroma_enable_baseline = st.sidebar.checkbox("Enable Background Baseline", value=True)
+        chroma_enable_deriv = st.sidebar.checkbox("Enable Savitzky-Golay Derivative", value=False)
+        chroma_deriv_order = 1
+        chroma_sg_window_size = 11
+        if chroma_enable_deriv:
+            chroma_deriv_order = st.sidebar.selectbox("Derivative Order", [1, 2], index=1)
+            chroma_sg_window_size = st.sidebar.selectbox("SG Window Size", [5, 7, 9, 11, 13, 15, 17], index=3)
+    else: # GC-MS
+        st.sidebar.markdown("<h2>3. GC-MS Regularizations</h2>", unsafe_allow_html=True)
+        chroma_lambda_c = st.sidebar.slider("L1 Spectral Sparsity (lambda_c)", min_value=0.0, max_value=0.1, value=0.01, step=0.005, format="%.3f")
+        chroma_lambda_res = st.sidebar.slider("L2 Shape Residual (lambda_res)", min_value=0.0, max_value=5.0, value=1.0, step=0.1, format="%.1f")
         
     chroma_warp_reg_coef = st.sidebar.slider("Warp Regularization Coef", min_value=0.0, max_value=0.01, value=0.001, step=0.0005, format="%.4f")
+
+# --- Early Stopping Configuration ---
+st.sidebar.markdown("<h2>🛑 Early Stopping Control</h2>", unsafe_allow_html=True)
+es_enabled = st.sidebar.checkbox("Enable Early Stopping", value=True)
+if es_enabled:
+    es_patience = st.sidebar.number_input("Patience (epochs)", min_value=5, max_value=1000, value=50, step=5)
+    es_tol = st.sidebar.number_input("Tolerance (rel change)", min_value=1e-8, max_value=1e-1, value=1e-6, step=1e-6, format="%.1e")
+    es_min_epochs = st.sidebar.number_input("Min Warmup Epochs", min_value=0, max_value=1000, value=250, step=10)
+else:
+    es_patience = 999999
+    es_tol = 0.0
+    es_min_epochs = 0
+
 
 # --- Initialize Session State Variables ---
 if 'track_mode' not in st.session_state or st.session_state.track_mode != track_mode:
@@ -573,6 +630,28 @@ if 'track_mode' not in st.session_state or st.session_state.track_mode != track_
     st.session_state.aligned_M = None
     st.session_state.pred_ex_bg = None
     st.session_state.pred_em_bg = None
+    st.session_state.early_stopped = False
+    st.session_state.early_stopping = None
+
+if track_mode == "Chromatography Warping":
+    if 'chroma_type' not in st.session_state or st.session_state.chroma_type != chroma_type:
+        st.session_state.chroma_type = chroma_type
+        st.session_state.initialized = False
+        st.session_state.epoch = 0
+        st.session_state.is_training = False
+        st.session_state.losses = []
+        st.session_state.r2_a = []
+        st.session_state.r2_b = []
+        st.session_state.r2_c = []
+        st.session_state.model = None
+        st.session_state.optimizer = None
+        st.session_state.dataset = None
+        st.session_state.generator = None
+        st.session_state.aligned_A = None
+        st.session_state.aligned_B = None
+        st.session_state.aligned_C = None
+        st.session_state.early_stopped = False
+        st.session_state.early_stopping = None
 
 # --- Rebuild model on-the-fly if configuration changes ---
 if track_mode == "EEM Spectroscopy":
@@ -626,43 +705,87 @@ if track_mode == "EEM Spectroscopy":
         st.session_state.aligned_M = None
         st.session_state.pred_ex_bg = None
         st.session_state.pred_em_bg = None
+        st.session_state.early_stopped = False
+        st.session_state.early_stopping = EarlyStopping(patience=es_patience, tol=es_tol, min_epochs=es_min_epochs) if es_enabled else None
         st.sidebar.info(f"🔄 Rebuilt solver for {model_type}")
 else:
-    deriv_order = chroma_deriv_order if chroma_enable_deriv else 0
-    sg_w = chroma_sg_window_size if chroma_enable_deriv else 11
     current_warp = chroma_warp_type if chroma_model_arch == "Chroma-PETN" else "linear"
+    should_rebuild = False
     
-    if st.session_state.initialized and (
-        st.session_state.get('chroma_model_arch_in_state') != chroma_model_arch or
-        st.session_state.get('chroma_warp_type_in_state') != current_warp or
-        st.session_state.get('chroma_deriv_in_state') != deriv_order or
-        st.session_state.get('chroma_sg_w_in_state') != sg_w or
-        st.session_state.get('chroma_lr_in_state') != chroma_lr
-    ):
+    if st.session_state.initialized:
+        if st.session_state.get('chroma_model_arch_in_state') != chroma_model_arch:
+            should_rebuild = True
+        elif st.session_state.get('chroma_warp_type_in_state') != current_warp:
+            should_rebuild = True
+        elif st.session_state.get('chroma_lr_in_state') != chroma_lr:
+            should_rebuild = True
+        elif chroma_type == "HPLC-DAD":
+            deriv_order = chroma_deriv_order if chroma_enable_deriv else 0
+            sg_w = chroma_sg_window_size if chroma_enable_deriv else 11
+            if st.session_state.get('chroma_deriv_in_state') != deriv_order:
+                should_rebuild = True
+            elif st.session_state.get('chroma_sg_w_in_state') != sg_w:
+                should_rebuild = True
+            elif st.session_state.get('chroma_baseline_in_state') != chroma_enable_baseline:
+                should_rebuild = True
+        else: # GC-MS
+            if st.session_state.get('chroma_lambda_c_in_state') != chroma_lambda_c:
+                should_rebuild = True
+            elif st.session_state.get('chroma_lambda_res_in_state') != chroma_lambda_res:
+                should_rebuild = True
+                
+    if should_rebuild:
         st.session_state.chroma_model_arch_in_state = chroma_model_arch
         st.session_state.chroma_warp_type_in_state = current_warp
-        st.session_state.chroma_deriv_in_state = deriv_order
-        st.session_state.chroma_sg_w_in_state = sg_w
         st.session_state.chroma_lr_in_state = chroma_lr
         
         generator = st.session_state.generator
-        st.session_state.model = HPLC_PETN(
-            num_samples=generator.num_samples,
-            num_time=generator.num_time,
-            num_spec=generator.num_spec,
-            num_components=3,
-            warp_type=current_warp,
-            num_segments=4,
-            derivative_order=deriv_order,
-            sg_window_size=sg_w
-        )
-        if chroma_model_arch == "Pure PARAFAC":
-            st.session_state.model.alpha_params.data.fill_(0.0)
-            st.session_state.model.beta_params.data.fill_(0.0)
-            st.session_state.model.alpha_params.requires_grad = False
-            st.session_state.model.beta_params.requires_grad = False
-
+        
+        if chroma_type == "HPLC-DAD":
+            deriv_order = chroma_deriv_order if chroma_enable_deriv else 0
+            sg_w = chroma_sg_window_size if chroma_enable_deriv else 11
+            st.session_state.chroma_deriv_in_state = deriv_order
+            st.session_state.chroma_sg_w_in_state = sg_w
+            st.session_state.chroma_baseline_in_state = chroma_enable_baseline
             
+            st.session_state.model = HPLC_PETN(
+                num_samples=generator.num_samples,
+                num_time=generator.num_time,
+                num_spec=generator.num_spec,
+                num_components=3,
+                warp_type=current_warp,
+                num_segments=4,
+                derivative_order=deriv_order,
+                sg_window_size=sg_w,
+                sample_specific_baseline=chroma_enable_baseline
+            )
+            if chroma_model_arch == "Pure PARAFAC":
+                st.session_state.model.alpha.data.fill_(0.0)
+                st.session_state.model.beta.data.fill_(0.0)
+                st.session_state.model.alpha.requires_grad = False
+                st.session_state.model.beta.requires_grad = False
+        else: # GC-MS
+            st.session_state.chroma_lambda_c_in_state = chroma_lambda_c
+            st.session_state.chroma_lambda_res_in_state = chroma_lambda_res
+            
+            st.session_state.model = GCMS_PETN(
+                num_samples=generator.num_samples,
+                num_time=generator.num_time,
+                num_spec=generator.num_spec,
+                num_components=3,
+                warp_type=current_warp,
+                num_segments=4,
+                lambda_c=chroma_lambda_c,
+                lambda_res=chroma_lambda_res
+            )
+            if chroma_model_arch == "Pure PARAFAC":
+                st.session_state.model.alpha.data.fill_(0.0)
+                st.session_state.model.beta.data.fill_(0.0)
+                st.session_state.model.alpha.requires_grad = False
+                st.session_state.model.beta.requires_grad = False
+                st.session_state.model.delta_B.data.fill_(0.0)
+                st.session_state.model.delta_B.requires_grad = False
+                
         st.session_state.optimizer = optim.Adam(st.session_state.model.parameters(), lr=chroma_lr)
         st.session_state.epoch = 0
         st.session_state.losses = []
@@ -672,7 +795,20 @@ else:
         st.session_state.aligned_A = None
         st.session_state.aligned_B = None
         st.session_state.aligned_C = None
+        st.session_state.early_stopped = False
+        st.session_state.early_stopping = EarlyStopping(patience=es_patience, tol=es_tol, min_epochs=es_min_epochs) if es_enabled else None
         st.sidebar.info(f"🔄 Rebuilt solver for {chroma_model_arch}")
+
+# --- Update Early Stopping Instance Attributes Dynamically ---
+if not es_enabled:
+    st.session_state.early_stopping = None
+else:
+    if st.session_state.early_stopping is None:
+        st.session_state.early_stopping = EarlyStopping(patience=es_patience, tol=es_tol, min_epochs=es_min_epochs)
+    else:
+        st.session_state.early_stopping.patience = es_patience
+        st.session_state.early_stopping.tol = es_tol
+        st.session_state.early_stopping.min_epochs = max(0, min(es_min_epochs, es_patience - 1))
 
 # --- Helper functions to render custom UI structures ---
 def render_metrics_grid(epoch, total_epochs, loss, r2_score, r2_b, r2_c, mode="EEM"):
@@ -725,6 +861,13 @@ def render_status_bar(mode="EEM"):
         <div class="status-bar">
             <span class="status-dot status-running"></span>
             <span class="status-text">TRAINING — Epoch {st.session_state.epoch} / {max_ep}</span>
+        </div>
+        """
+    elif st.session_state.get('early_stopped', False):
+        status_html = f"""
+        <div class="status-bar">
+            <span class="status-dot status-complete"></span>
+            <span class="status-text">CONVERGED — Early stopping triggered at epoch {st.session_state.epoch} / {max_ep}</span>
         </div>
         """
     elif st.session_state.epoch >= max_ep:
@@ -789,19 +932,34 @@ def action_generate_dataset():
         optimizer = optim.Adam(model.parameters(), lr=lr)
         st.session_state.model_type_in_state = model_type
     else:
-        generator = ChromatographicDataGenerator(
-            num_samples=15, 
-            num_time=80, 
-            num_spec=60, 
-            num_components=3, 
-            seed=42
-        )
-        dataset = generator.generate_dataset(
-            noise_std=chroma_noise_std, 
-            max_shift=chroma_max_shift, 
-            max_stretch=chroma_max_stretch, 
-            warp_type=chroma_sim_warp_type
-        )
+        if chroma_type == "HPLC-DAD":
+            generator = HPLCDADDataGenerator(
+                num_samples=15, 
+                num_time=80, 
+                num_spec=60, 
+                num_components=3, 
+                seed=42
+            )
+            dataset = generator.generate_dataset(
+                noise_std=chroma_noise_std, 
+                max_shift=chroma_max_shift, 
+                max_stretch=chroma_max_stretch, 
+                warp_type=chroma_sim_warp_type
+            )
+        else: # GC-MS
+            generator = GCMSDataGenerator(
+                num_samples=15, 
+                num_time=80, 
+                num_spec=60, 
+                num_components=3, 
+                seed=42
+            )
+            dataset = generator.generate_dataset(
+                noise_std=chroma_noise_std, 
+                max_shift=chroma_max_shift, 
+                max_stretch=chroma_max_stretch, 
+                warp_type=chroma_sim_warp_type
+            )
         
         st.session_state.generator = generator
         st.session_state.dataset = dataset
@@ -809,33 +967,59 @@ def action_generate_dataset():
         torch.manual_seed(42)
         np.random.seed(42)
         
-        deriv_order = chroma_deriv_order if chroma_enable_deriv else 0
-        sg_w = chroma_sg_window_size if chroma_enable_deriv else 11
         current_warp = chroma_warp_type if chroma_model_arch == "Chroma-PETN" else "linear"
         
-        model = HPLC_PETN(
-            num_samples=generator.num_samples,
-            num_time=generator.num_time,
-            num_spec=generator.num_spec,
-            num_components=3,
-            warp_type=current_warp,
-            num_segments=4,
-            derivative_order=deriv_order,
-            sg_window_size=sg_w
-        )
-        
-        if chroma_model_arch == "Pure PARAFAC":
-            model.alpha_params.data.fill_(0.0)
-            model.beta_params.data.fill_(0.0)
-            model.alpha_params.requires_grad = False
-            model.beta_params.requires_grad = False
-
+        if chroma_type == "HPLC-DAD":
+            deriv_order = chroma_deriv_order if chroma_enable_deriv else 0
+            sg_w = chroma_sg_window_size if chroma_enable_deriv else 11
+            
+            model = HPLC_PETN(
+                num_samples=generator.num_samples,
+                num_time=generator.num_time,
+                num_spec=generator.num_spec,
+                num_components=3,
+                warp_type=current_warp,
+                num_segments=4,
+                derivative_order=deriv_order,
+                sg_window_size=sg_w,
+                sample_specific_baseline=chroma_enable_baseline
+            )
+            
+            if chroma_model_arch == "Pure PARAFAC":
+                model.alpha.data.fill_(0.0)
+                model.beta.data.fill_(0.0)
+                model.alpha.requires_grad = False
+                model.beta.requires_grad = False
+                
+            st.session_state.chroma_deriv_in_state = deriv_order
+            st.session_state.chroma_sg_w_in_state = sg_w
+            st.session_state.chroma_baseline_in_state = chroma_enable_baseline
+        else: # GC-MS
+            model = GCMS_PETN(
+                num_samples=generator.num_samples,
+                num_time=generator.num_time,
+                num_spec=generator.num_spec,
+                num_components=3,
+                warp_type=current_warp,
+                num_segments=4,
+                lambda_c=chroma_lambda_c,
+                lambda_res=chroma_lambda_res
+            )
+            
+            if chroma_model_arch == "Pure PARAFAC":
+                model.alpha.data.fill_(0.0)
+                model.beta.data.fill_(0.0)
+                model.alpha.requires_grad = False
+                model.beta.requires_grad = False
+                model.delta_B.data.fill_(0.0)
+                model.delta_B.requires_grad = False
+                
+            st.session_state.chroma_lambda_c_in_state = chroma_lambda_c
+            st.session_state.chroma_lambda_res_in_state = chroma_lambda_res
             
         optimizer = optim.Adam(model.parameters(), lr=chroma_lr)
         st.session_state.chroma_model_arch_in_state = chroma_model_arch
         st.session_state.chroma_warp_type_in_state = current_warp
-        st.session_state.chroma_deriv_in_state = deriv_order
-        st.session_state.chroma_sg_w_in_state = sg_w
         st.session_state.chroma_lr_in_state = chroma_lr
         
     st.session_state.model = model
@@ -852,6 +1036,8 @@ def action_generate_dataset():
     st.session_state.aligned_M = None
     st.session_state.pred_ex_bg = None
     st.session_state.pred_em_bg = None
+    st.session_state.early_stopped = False
+    st.session_state.early_stopping = EarlyStopping(patience=es_patience, tol=es_tol, min_epochs=es_min_epochs) if es_enabled else None
     st.session_state.initialized = True
 
 def action_reset_solver():
@@ -871,10 +1057,13 @@ def action_reset_solver():
         st.session_state.optimizer = optim.Adam(st.session_state.model.parameters(), lr=lr)
     else:
         if chroma_model_arch == "Pure PARAFAC":
-            st.session_state.model.alpha_params.data.fill_(0.0)
-            st.session_state.model.beta_params.data.fill_(0.0)
-            st.session_state.model.alpha_params.requires_grad = False
-            st.session_state.model.beta_params.requires_grad = False
+            st.session_state.model.alpha.data.fill_(0.0)
+            st.session_state.model.beta.data.fill_(0.0)
+            st.session_state.model.alpha.requires_grad = False
+            st.session_state.model.beta.requires_grad = False
+            if chroma_type == "GC-MS":
+                st.session_state.model.delta_B.data.fill_(0.0)
+                st.session_state.model.delta_B.requires_grad = False
 
         st.session_state.optimizer = optim.Adam(st.session_state.model.parameters(), lr=chroma_lr)
         
@@ -885,6 +1074,8 @@ def action_reset_solver():
     st.session_state.aligned_M = None
     st.session_state.pred_ex_bg = None
     st.session_state.pred_em_bg = None
+    st.session_state.early_stopped = False
+    st.session_state.early_stopping = EarlyStopping(patience=es_patience, tol=es_tol, min_epochs=es_min_epochs) if es_enabled else None
 
 # --- Training Logic Step ---
 def run_training_step(num_epochs, lr_val, model_arch):
@@ -912,7 +1103,10 @@ def run_training_step(num_epochs, lr_val, model_arch):
     else:
         mask_values = torch.ones_like(intensities)
         
-    for _ in range(num_epochs):
+    early_stopped = False
+    num_epochs_executed = num_epochs
+    for epoch_idx in range(num_epochs):
+        current_epoch = st.session_state.epoch + epoch_idx
         st.session_state.optimizer.zero_grad()
         predictions = st.session_state.model(sample_indices, ex_indices, em_indices)
         loss = masked_mse_loss(predictions, intensities, mask_values)
@@ -920,9 +1114,17 @@ def run_training_step(num_epochs, lr_val, model_arch):
         st.session_state.optimizer.step()
         st.session_state.model.project_constraints()
         
-    st.session_state.epoch += num_epochs
+        if st.session_state.early_stopping is not None:
+            if st.session_state.early_stopping(current_epoch, loss.item(), intensities):
+                early_stopped = True
+                num_epochs_executed = epoch_idx + 1
+                break
+        
+    st.session_state.epoch += num_epochs_executed
     loss_val = loss.item()
     st.session_state.losses.append(loss_val)
+    if early_stopped:
+        st.session_state.early_stopped = True
     
     st.session_state.model.eval()
     with torch.no_grad():
@@ -969,7 +1171,7 @@ def run_training_step(num_epochs, lr_val, model_arch):
         st.session_state.pred_ex_bg = st.session_state.model.ex_bg.cpu().numpy()
         st.session_state.pred_em_bg = st.session_state.model.em_bg.cpu().numpy()
         
-    return loss_val, avg_r2_a, avg_r2_b, avg_r2_c
+    return loss_val, avg_r2_a, avg_r2_b, avg_r2_c, early_stopped
 
 def run_chroma_training_step(num_epochs, lr_val, model_arch):
     for param_group in st.session_state.optimizer.param_groups:
@@ -989,42 +1191,52 @@ def run_chroma_training_step(num_epochs, lr_val, model_arch):
     coords_j_flat = torch.tensor(coords_j.flatten(), dtype=torch.long)
     coords_k_flat = torch.tensor(coords_k.flatten(), dtype=torch.long)
     
-    if model.derivative_order > 0:
+    if chroma_type == "HPLC-DAD" and getattr(model, 'derivative_order', 0) > 0:
         from scipy.signal import savgol_filter
         X_deriv = savgol_filter(dataset['X'], window_length=model.sg_window_size, polyorder=2, deriv=model.derivative_order, axis=1)
         y_target = torch.tensor(X_deriv, dtype=torch.float32)[coords_i_flat, coords_j_flat, coords_k_flat]
     else:
         y_target = torch.tensor(dataset['X'], dtype=torch.float32)[coords_i_flat, coords_j_flat, coords_k_flat]
         
-    for _ in range(num_epochs):
+    early_stopped = False
+    num_epochs_executed = num_epochs
+    for epoch_idx in range(num_epochs):
+        current_epoch = st.session_state.epoch + epoch_idx
         st.session_state.optimizer.zero_grad()
         y_pred = model(coords_i_flat, coords_j_flat, coords_k_flat)
-        loss_mse = torch.nn.functional.mse_loss(y_pred, y_target)
+        loss_main = model.calculate_loss(y_pred, y_target)
         
         if model.warp_type == 'linear':
-            loss_warp_reg = chroma_warp_reg_coef * (torch.mean(model.alpha_params**2) + torch.mean(model.beta_params**2))
+            loss_warp_reg = chroma_warp_reg_coef * (torch.mean(model.alpha**2) + torch.mean(model.beta**2))
         elif model.warp_type == 'quadratic':
-            loss_warp_reg = chroma_warp_reg_coef * (torch.mean(model.alpha_params**2) + torch.mean(model.beta_params**2) + torch.mean(model.gamma_params**2))
+            loss_warp_reg = chroma_warp_reg_coef * (torch.mean(model.alpha**2) + torch.mean(model.beta**2) + torch.mean(model.gamma**2))
         elif model.warp_type == 'spline':
-            loss_warp_reg = chroma_warp_reg_coef * (torch.mean(model.beta_params**2) + torch.mean(model.log_increments_params**2))
+            loss_warp_reg = chroma_warp_reg_coef * (torch.mean(model.beta**2) + torch.mean(model.log_increments**2))
         else:
             loss_warp_reg = torch.tensor(0.0)
 
-            
-        loss = loss_mse + loss_warp_reg
+        loss = loss_main + loss_warp_reg
         loss.backward()
         st.session_state.optimizer.step()
         model.project_constraints()
         
-    st.session_state.epoch += num_epochs
-    loss_val = loss_mse.item()
+        if st.session_state.early_stopping is not None:
+            if st.session_state.early_stopping(current_epoch, loss_main.item(), y_target):
+                early_stopped = True
+                num_epochs_executed = epoch_idx + 1
+                break
+        
+    st.session_state.epoch += num_epochs_executed
+    loss_val = loss_main.item()
     st.session_state.losses.append(loss_val)
+    if early_stopped:
+        st.session_state.early_stopped = True
     
     model.eval()
     with torch.no_grad():
-        pred_A = model.sample_embeddings.weight.cpu().numpy()
-        pred_B = model.time_embeddings.weight.cpu().numpy()
-        pred_C = model.spec_embeddings.weight.cpu().numpy()
+        pred_A = model.A.detach().cpu().numpy()
+        pred_B = model.B.detach().cpu().numpy()
+        pred_C = model.C.detach().cpu().numpy()
         
     aligned_A, aligned_B, aligned_C, metrics = match_and_align_chroma_components(
         dataset['A'], dataset['B'], dataset['C'], pred_A, pred_B, pred_C
@@ -1042,7 +1254,44 @@ def run_chroma_training_step(num_epochs, lr_val, model_arch):
     st.session_state.aligned_B = aligned_B
     st.session_state.aligned_C = aligned_C
     
-    return loss_val, avg_r2_a, avg_r2_b, avg_r2_c
+    return loss_val, avg_r2_a, avg_r2_b, avg_r2_c, early_stopped
+
+# --- Render Status Bar and Live Operations Control Panel ---
+if st.session_state.get('early_stopped', False):
+    st.success(f"Converged early at epoch {st.session_state.epoch}!")
+render_status_bar(mode="EEM" if track_mode == "EEM Spectroscopy" else "Chroma")
+
+st.markdown('<div class="control-panel-header">🎛️ Live Operations Control Panel</div>', unsafe_allow_html=True)
+col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
+
+with col_ctrl1:
+    if st.button("🔄 Generate New Dataset", key="btn_gen_main"):
+        action_generate_dataset()
+        st.rerun()
+
+with col_ctrl2:
+    if not st.session_state.initialized:
+        st.button("▶️ Start Solver", key="btn_start_disabled", disabled=True, type="primary")
+    elif st.session_state.is_training:
+        if st.button("⏸️ Pause Solver", key="btn_pause_main", type="primary"):
+            st.session_state.is_training = False
+            st.rerun()
+    else:
+        if st.session_state.epoch < total_epochs:
+            if st.button("▶️ Start Solver", key="btn_start_main", type="primary"):
+                st.session_state.is_training = True
+                st.session_state.early_stopped = False
+                st.session_state.early_stopping = EarlyStopping(patience=es_patience, tol=es_tol, min_epochs=es_min_epochs) if es_enabled else None
+                st.rerun()
+        else:
+            st.button("✅ Solver Complete", key="btn_complete_main", disabled=True)
+
+with col_ctrl3:
+    if st.button("🗑️ Reset Solver State", key="btn_reset_main", disabled=not st.session_state.initialized):
+        action_reset_solver()
+        st.rerun()
+
+st.markdown("---")
 
 # --- Conditional Dashboard Body Render ---
 if not st.session_state.initialized:
@@ -1480,18 +1729,34 @@ else:
                         line=dict(color=colors_comp[r], width=2.5)
                     ), row=1, col=1)
                     
-                    fig_load.add_trace(go.Scatter(
-                        x=generator.spec_grid, y=dataset['C'][:, r], 
-                        mode='lines', name=f"True {comp_names[r]}", 
-                        line=dict(color=colors_comp[r], width=1.5, dash='dash'), 
-                        showlegend=False
-                    ), row=1, col=2)
-                    fig_load.add_trace(go.Scatter(
-                        x=generator.spec_grid, y=st.session_state.aligned_C[:, r], 
-                        mode='lines', name=f"Resolved {comp_names[r]}", 
-                        line=dict(color=colors_comp[r], width=2.5), 
-                        showlegend=False
-                    ), row=1, col=2)
+                    if chroma_type == "HPLC-DAD":
+                        fig_load.add_trace(go.Scatter(
+                            x=generator.spec_grid, y=dataset['C'][:, r], 
+                            mode='lines', name=f"True {comp_names[r]}", 
+                            line=dict(color=colors_comp[r], width=1.5, dash='dash'), 
+                            showlegend=False
+                        ), row=1, col=2)
+                        fig_load.add_trace(go.Scatter(
+                            x=generator.spec_grid, y=st.session_state.aligned_C[:, r], 
+                            mode='lines', name=f"Resolved {comp_names[r]}", 
+                            line=dict(color=colors_comp[r], width=2.5), 
+                            showlegend=False
+                        ), row=1, col=2)
+                    else: # GC-MS (sparse stem bars)
+                        fig_load.add_trace(go.Bar(
+                            x=generator.spec_grid, y=dataset['C'][:, r],
+                            name=f"True {comp_names[r]}",
+                            marker=dict(color=colors_comp[r], opacity=0.4),
+                            width=1.5,
+                            showlegend=(r == 0)
+                        ), row=1, col=2)
+                        fig_load.add_trace(go.Bar(
+                            x=generator.spec_grid, y=st.session_state.aligned_C[:, r],
+                            name=f"Resolved {comp_names[r]}",
+                            marker=dict(color=colors_comp[r], opacity=1.0),
+                            width=1.0,
+                            showlegend=(r == 0)
+                        ), row=1, col=2)
                     
                 fig_load.update_layout(
                     template="plotly_dark",
@@ -1500,7 +1765,9 @@ else:
                     plot_bgcolor="rgba(0,0,0,0)",
                     font=dict(family="Plus Jakarta Sans, Outfit, sans-serif")
                 )
-                fig_load.update_xaxes(title_text="Normalized Time / Wavelength", showgrid=True, gridcolor="rgba(255,255,255,0.05)", linecolor="rgba(255,255,255,0.1)", tickfont=dict(color="#8b949e"))
+                spec_axis_title = "Wavelength (nm)" if chroma_type == "HPLC-DAD" else "Mass-to-Charge Ratio (m/z)"
+                fig_load.update_xaxes(title_text="Normalized Time", showgrid=True, gridcolor="rgba(255,255,255,0.05)", linecolor="rgba(255,255,255,0.1)", tickfont=dict(color="#8b949e"), row=1, col=1)
+                fig_load.update_xaxes(title_text=spec_axis_title, showgrid=True, gridcolor="rgba(255,255,255,0.05)", linecolor="rgba(255,255,255,0.1)", tickfont=dict(color="#8b949e"), row=1, col=2)
                 fig_load.update_yaxes(title_text="Normalized Intensity", showgrid=True, gridcolor="rgba(255,255,255,0.05)", linecolor="rgba(255,255,255,0.1)", tickfont=dict(color="#8b949e"))
                 st.plotly_chart(fig_load, use_container_width=True)
                 
@@ -1665,17 +1932,17 @@ else:
                     true_diff = t_true_warped - t_obs
                     
                     if model.warp_type == 'linear':
-                        stretch_pred = model.alpha_params[i].mean().item()
-                        shift_pred = model.beta_params[i].mean().item()
+                        stretch_pred = model.alpha[i].mean().item()
+                        shift_pred = model.beta[i].mean().item()
                         t_pred_warped = t_obs - (stretch_pred * t_obs + shift_pred)
                     elif model.warp_type == 'quadratic':
-                        alpha_pred = model.alpha_params[i].mean().item()
-                        beta_pred = model.beta_params[i].mean().item()
-                        gamma_pred = model.gamma_params[i].mean().item()
+                        alpha_pred = model.alpha[i].mean().item()
+                        beta_pred = model.beta[i].mean().item()
+                        gamma_pred = model.gamma[i].mean().item()
                         t_pred_warped = t_obs - (alpha_pred * (t_obs**2) + beta_pred * t_obs + gamma_pred)
                     elif model.warp_type == 'spline':
-                        shift_pred = model.beta_params[i].mean().item()
-                        log_inc_pred = model.log_increments_params[i].mean(dim=-1).detach().cpu().numpy()
+                        shift_pred = model.beta[i].mean().item()
+                        log_inc_pred = model.log_increments[i].mean(dim=-1).detach().cpu().numpy()
                         inc_pred = (1.0 / model.num_segments) * np.exp(log_inc_pred)
                         w_pred = shift_pred + np.cumsum(np.concatenate([[0.0], inc_pred]))
                         val = t_obs * model.num_segments
@@ -1708,6 +1975,80 @@ else:
                     **PLOTLY_THEME_LAYOUT
                 )
                 st.plotly_chart(fig_warp, use_container_width=True)
+                
+                # --- Baseline or shape residual plots ---
+                if chroma_type == "HPLC-DAD" and chroma_enable_baseline:
+                    st.subheader("HPLC Baseline Solvent Drift Resolution")
+                    st.markdown("""
+                    The model extracts a sample-specific, time-varying baseline representing continuous solvent absorption drift.
+                    """)
+                    sample_idx = st.slider("Select Sample to View Baseline Recovery", min_value=0, max_value=generator.num_samples - 1, value=0, key="base_sample_slider")
+                    model = st.session_state.model
+                    with torch.no_grad():
+                        t_np = np.linspace(0.0, 1.0, generator.num_time)
+                        if model.sample_specific_baseline:
+                            offset = model.baseline_offset[sample_idx].item()
+                            slope = model.baseline_slope[sample_idx].item()
+                            quad = model.baseline_quadratic[sample_idx].item()
+                            poly = offset + slope * t_np + quad * (t_np ** 2)
+                            solv = model.solvent_spectrum.cpu().numpy()
+                            pred_baseline = np.outer(poly, solv)
+                        else:
+                            offset = model.baseline_offset.cpu().numpy()
+                            slope = model.baseline_slope.cpu().numpy()
+                            quad = model.baseline_quadratic.cpu().numpy()
+                            pred_baseline = offset[np.newaxis, :] + slope[np.newaxis, :] * t_np[:, np.newaxis] + quad[np.newaxis, :] * (t_np ** 2)[:, np.newaxis]
+                            
+                    true_baseline = dataset['baseline'][sample_idx]
+                    
+                    fig_base = go.Figure()
+                    fig_base.add_trace(go.Scatter(
+                        x=generator.time_grid, y=np.mean(true_baseline, axis=1),
+                        mode='lines', name='True Avg Baseline',
+                        line=dict(color='#ff7f0e', width=1.5, dash='dash')
+                    ))
+                    fig_base.add_trace(go.Scatter(
+                        x=generator.time_grid, y=np.mean(pred_baseline, axis=1),
+                        mode='lines', name='Model Avg Baseline',
+                        line=dict(color='#ff7f0e', width=2.5)
+                    ))
+                    fig_base.update_layout(
+                        title=f"Sample {sample_idx+1} True vs. Learned Solvent Baseline Drift",
+                        xaxis_title="Retention Time (Normalized)",
+                        yaxis_title="Intensity",
+                        height=350,
+                        **PLOTLY_THEME_LAYOUT
+                    )
+                    st.plotly_chart(fig_base, use_container_width=True)
+                    
+                elif chroma_type == "GC-MS":
+                    st.subheader("GC-MS Peak Shape Residuals (ΔB)")
+                    st.markdown("""
+                    The model learns a sample-specific residual matrix $\Delta B_i$ to capture peak shape variations 
+                    (e.g., column overloading, extreme tailing) that deviate from the aligned trilinear profile.
+                    """)
+                    sample_idx = st.slider("Select Sample to View Shape Residuals", min_value=0, max_value=generator.num_samples - 1, value=0, key="delta_sample_slider")
+                    model = st.session_state.model
+                    with torch.no_grad():
+                        delta_sample = model.delta_B[sample_idx].cpu().numpy()
+                    
+                    colors_comp = ['#1f77b4', '#2ca02c', '#d62728']
+                    comp_names = ["Component 1", "Component 2", "Component 3"]
+                    fig_delta = go.Figure()
+                    for r in range(generator.num_components):
+                        fig_delta.add_trace(go.Scatter(
+                            x=generator.time_grid, y=delta_sample[:, r],
+                            mode='lines', name=f"ΔB for {comp_names[r]}",
+                            line=dict(color=colors_comp[r], width=2)
+                        ))
+                    fig_delta.update_layout(
+                        title=f"Sample {sample_idx+1} Learned Shape Residual Offset (ΔB) Profiles",
+                        xaxis_title="Retention Time (Normalized)",
+                        yaxis_title="Shape Offset",
+                        height=350,
+                        **PLOTLY_THEME_LAYOUT
+                    )
+                    st.plotly_chart(fig_delta, use_container_width=True)
             else:
                 st.info("Start solver training to display warping profiles.")
 
@@ -1715,11 +2056,14 @@ else:
 if st.session_state.is_training:
     if st.session_state.epoch < total_epochs:
         if track_mode == "EEM Spectroscopy":
-            loss_val, r2_a, r2_b, r2_c = run_training_step(epochs_per_update, lr, model_type)
+            loss_val, r2_a, r2_b, r2_c, early_stopped = run_training_step(epochs_per_update, lr, model_type)
         else:
-            loss_val, r2_a, r2_b, r2_c = run_chroma_training_step(epochs_per_update, chroma_lr, chroma_model_arch)
+            loss_val, r2_a, r2_b, r2_c, early_stopped = run_chroma_training_step(epochs_per_update, chroma_lr, chroma_model_arch)
             
-        if ui_delay > 0:
+        if early_stopped:
+            st.session_state.is_training = False
+            st.rerun()
+        elif ui_delay > 0:
             time.sleep(ui_delay)
         st.rerun()
     else:
