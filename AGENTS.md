@@ -66,6 +66,9 @@ Whenever integrating new chromatographic or spectroscopic datasets (simulated or
      * **Score Matrices & Warp Tables:** Markdown-formatted summaries of scores and offsets (always format tables using custom helpers to avoid external library dependencies like `tabulate`).
      * **Plots:** Elution profile comparisons, score distributions, TICs (unaligned vs. aligned), and fit overlays saved in the same directory.
 
+### 5. DOCUMENTATION & README STANDARDS
+* **High-Level Main README Structure:** The main repository `README.md` must maintain a simplified, high-level directory structure representation (focusing on subpackage roles and directories rather than listing individual execution/download scripts like `download_*.py` or `run_*.py`). Detail-oriented, file-specific lists should be reserved for the domain-specific `README.md` files (under `src/<domain>/` or `data/<domain>/`).
+
 ### CURRENT WORKING BACKLOG:
 * **EEM Spectroscopy Track:**
   * *(Backlog is currently empty - pending next phase of changes)*

@@ -36,32 +36,12 @@ petn_parafac/
 │   ├── eem/                # EEM datasets (CDOM, Honey, Aminoacids, etc.)
 │   └── chroma/             # Chromatography datasets (GC-MS, HPLC-DAD)
 ├── notebooks/
-│   ├── eem/                # EEM analysis notebooks
-│   └── chroma/             # Chromatography alignment notebooks
+│   ├── eem/                # EEM context primers and experiment reports
+│   └── chroma/             # Chromatography context primers and experiment reports
 ├── src/
-│   ├── common/             # Shared utilities (plotting, base classes)
-│   │   ├── __init__.py
-│   │   └── utils.py
-│   ├── eem/                # EEM Spectroscopy Subpackage
-│   │   ├── __init__.py
-│   │   ├── model.py        # PETN-PARAFAC model with IFE attenuation head
-│   │   ├── loss.py         # Custom masked MSE loss
-│   │   ├── generator.py    # Synthetic EEM dataset generator
-│   │   ├── download_aminoacids.py # Downloader for amino acids dataset
-│   │   ├── download_honey.py      # Downloader for honey dataset
-│   │   ├── run_aminoacids_experiment.py # Amino acids experiment runner
-│   │   ├── run_honey_experiment.py      # Honey experiment runner
-│   │   ├── run_simulated_experiment.py  # Simulated EEM experiment runner
-│   │   ├── benchmark.py    # EEM comparative benchmark script
-│   │   └── README.md       # EEM-specific detailed documentation
-│   └── chroma/             # Chromatography Subpackage
-│       ├── __init__.py
-│       ├── base.py         # Base class (BaseChromaPETN) with core parameters and warping equations
-│       ├── hplc.py         # HPLC-DAD specific PETN (HPLC_PETN) with baseline and derivatives
-│       ├── gcms.py         # GC-MS specific PETN (GCMS_PETN) with sparse losses and shape residuals
-│       ├── generator.py    # Synthetic GC-MS/HPLC-DAD data simulator
-│       ├── train.py        # Training and alignment/evaluation script
-│       └── README.md       # Chromatography-specific detailed documentation
+│   ├── common/             # Shared utilities (plotting, early stopping)
+│   ├── eem/                # EEM Spectroscopy subpackage (models, loss, generator)
+│   └── chroma/             # Chromatography subpackage (base, hplc, gcms classes)
 ├── tests/
 │   ├── eem/                # EEM unit and import tests
 │   └── chroma/             # Chromatography unit and integration tests
