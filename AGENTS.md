@@ -42,6 +42,7 @@ The library does not use soft loss penalties; it embeds physical laws directly i
 * **EEM Spectroscopy Track:**
   * *(Backlog is currently empty - pending next phase of changes)*
 * **Chromatography Track:**
-  * Implement a preprocessing/resampling utility to interpolate and align raw chromatographic runs with unique, sample-specific non-uniform time arrays onto a shared, uniform time grid. It should support 1D linear and cubic spline interpolation and compile the results into a single 3D dense tensor `(Samples, Time, Wavelengths/Spectra)` suitable for SVD warm-start initialization and training in Chroma-PETN.
+  * **[Completed]** Implement preprocessing/resampling utility: Added `resample_chromatographic_runs` in [preprocessing.py](file:///home/damianp/Proyectos/pinn_parafac/src/chroma/preprocessing.py) supporting 1D linear and cubic spline interpolation to compile non-uniform raw runs into a 3D dense tensor. Fully unit-tested in [test_preprocessing.py](file:///home/damianp/Proyectos/pinn_parafac/tests/chroma/test_preprocessing.py).
+  * **[Completed]** Downloaded and resolved Real HPLC-DAD Dataset A (Tauler et al., 1996): Implemented [download_tauler_a.py](file:///home/damianp/Proyectos/pinn_parafac/src/chroma/download_tauler_a.py) and [run_tauler_a_experiment.py](file:///home/damianp/Proyectos/pinn_parafac/src/chroma/run_tauler_a_experiment.py) to train Chroma-PETN under physical selectivity constraints. Resolved pure spectra with **0.9964** (Azinphos-ethyl) and **0.9986** (Fenitrothion) TCC similarity to library standards.
 
 When generating code, architectures, or training loops, ensure all physical constraints are hardcoded into the layers and loss functions as specified above.

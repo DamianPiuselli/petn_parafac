@@ -9,6 +9,7 @@ from src.chroma.gcms import GCMS_PETN
 from src.chroma.plots import extract_loadings, extract_loadings_df, plot_alignment_verification, plot_scores_comparison
 from src.chroma.generator import GCMSDataGenerator, HPLCDADDataGenerator
 from src.chroma.dataset import ChromatographyCOODataset, get_chroma_dataloader
+from src.chroma.preprocessing import resample_chromatographic_runs
 
 __all__ = [
     'BaseChromaPETN',
@@ -22,4 +23,5 @@ __all__ = [
     'HPLCDADDataGenerator',
     'ChromatographyCOODataset',
     'get_chroma_dataloader',
+    'resample_chromatographic_runs',
 ]
