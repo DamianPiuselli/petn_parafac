@@ -9,7 +9,7 @@ import time
 from src.eem.generator import EEMGenerator
 from src.eem.model import PETNParafac
 from src.eem.loss import masked_mse_loss
-from src.eem.train import match_and_align_components
+from src.eem.run_simulated_experiment import match_and_align_components
 
 from src.chroma.generator import GCMSDataGenerator, HPLCDADDataGenerator, ChromatographicDataGenerator
 from src.chroma import HPLC_PETN, GCMS_PETN
