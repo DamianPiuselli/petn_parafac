@@ -8,15 +8,46 @@ import io
 import os
 from scipy.io import loadmat
 
+def get_env_proxy():
+    """
+    Checks environment variables for proxy configurations.
+    """
+    for var in ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy']:
+        val = os.environ.get(var)
+        if val:
+            return val
+    return None
+
+def get_proxy_handler():
+    """
+    Creates urllib.request.ProxyHandler if environment proxy variables are defined.
+    """
+    proxy_url = get_env_proxy()
+    if proxy_url:
+        print(f"Proxy detected in environment: {proxy_url}")
+        return urllib.request.ProxyHandler({
+            'http': proxy_url,
+            'https': proxy_url
+        })
+    return None
+
 def download_and_extract():
     url = 'https://sid.erda.dk/share_redirect/AWqL5T6JCZ'
-    dest_dir = 'data/raw'
+    dest_dir = 'data/eem/aminoacids'
     os.makedirs(dest_dir, exist_ok=True)
     
     print(f"Downloading from {url}...")
+    
+    # Build urllib opener with proxy support
+    proxy_handler = get_proxy_handler()
+    if proxy_handler:
+        opener = urllib.request.build_opener(proxy_handler)
+    else:
+        opener = urllib.request.build_opener()
+        
     # Fetch nested zip data with User-Agent header
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req) as response:
+    with opener.open(req) as response:
         outer_zip_data = response.read()
     
     print("Extracting outer zip...")

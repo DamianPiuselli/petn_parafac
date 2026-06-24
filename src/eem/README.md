@@ -125,29 +125,47 @@ graph TD
 ```
 petn_parafac/
 ├── data/
-│   └── raw/
-│       ├── amino.mat              # Experimental Amino Acids benchmark dataset
+│   └── eem/
+│       ├── aminoacids/
+│       │   └── amino.mat              # Experimental Amino Acids benchmark dataset
 │       └── honey/
-│           └── HoneyEEM.mat       # Copenhagen Honey benchmark dataset
+│           └── HoneyEEM.mat           # Copenhagen Honey benchmark dataset
 ├── notebooks/
-│   ├── aminoacids_resolved_profiles.png # Resolved spectra for the Amino Acids dataset
-│   ├── honey_resolved_profiles.png # Resolved loadings and molar absorptivities for honey
-│   └── honey_pca_separation.png   # PCA score clustering for botanical and adulteration classification
+│   └── eem/
+│       ├── datasets/
+│       │   ├── aminoacids_dataset_context.md # Dataset context primer
+│       │   └── honey_dataset_context.md      # Dataset context primer
+│       └── experiments/
+│           ├── aminoacids/
+│           │   └── aminoacids_resolved_profiles.png
+│           ├── honey/
+│           │   ├── honey_resolved_profiles.png
+│           │   └── honey_pca_separation.png
+│           ├── simulated/
+│           │   ├── mvp_resolved_profiles.png
+│           │   ├── phase3_resolved_profiles.png
+│           │   ├── phase3_resolved_absorptivities.png
+│           │   ├── phase3_eem_heatmaps.png
+│           │   ├── scores_comparison.png
+│           │   └── simulated_experiment_report.md
+│           └── benchmark/
+│               ├── parafac_vs_petn_benchmark.csv
+│               └── parafac_vs_petn_benchmark_report.md
 src/
 ├── common/
 │   ├── __init__.py
-│   └── utils.py                   # Visualizations and plotting helpers
+│   └── utils.py                       # Visualizations, early stopping, and plotting helpers
 └── eem/
     ├── __init__.py
-    ├── benchmark.py               # EEM training benchmark script
-    ├── download_aminoacids.py     # Utility to download the Amino Acids dataset
-    ├── download_honey.py          # Utility to download the Copenhagen Honey dataset
-    ├── generator.py               # EEM synthetic generator with scatter & Lakowicz IFE
-    ├── loss.py                    # Custom masked MSE loss implementation
-    ├── model.py                   # PETNParafac custom model class in PyTorch
-    ├── train.py                   # Synthetic pipeline training loop
-    ├── train_aminoacids.py        # Experimental Amino Acids validation script
-    └── train_honey.py             # Copenhagen Honey validation and classifier script
+    ├── benchmark.py                   # EEM training benchmark script
+    ├── download_aminoacids.py         # Utility to download the Amino Acids dataset
+    ├── download_honey.py              # Utility to download the Copenhagen Honey dataset
+    ├── generator.py                   # EEM synthetic generator with scatter & Lakowicz IFE
+    ├── loss.py                        # Custom masked MSE loss implementation
+    ├── model.py                       # PETNParafac custom model class in PyTorch
+    ├── run_simulated_experiment.py    # Synthetic pipeline training loop
+    ├── run_aminoacids_experiment.py   # Experimental Amino Acids validation script
+    └── run_honey_experiment.py        # Copenhagen Honey validation and classifier script
 tests/
 └── eem/
     ├── test_generator.py          # Unit tests for the synthetic data generator
@@ -155,7 +173,6 @@ tests/
     └── test_model.py              # Unit tests for PETN custom model
 requirements.txt                   # Project python package requirements
 README.md                          # Project documentation
-
 ```
 
 ---
@@ -187,10 +204,10 @@ The library is validated on three calibration benchmarks of increasing complexit
 Generates artificial mixtures of 3 chemical fluorophores under severe simulated Rayleigh (1st and 2nd order) and Raman scattering, as well as non-linear IFE attenuation.
 * **Run Script:**
   ```bash
-  python -m src.eem.train
+  python -m src.eem.run_simulated_experiment
   ```
 * **Performance:** Resolves original loading profiles with high fidelity ($R^2 > 0.99$).
-* **Outputs:** Plots comparing true vs resolved loadings are saved to `notebooks/eem/phase3_resolved_profiles.png`, `notebooks/eem/phase3_resolved_absorptivities.png`, and EEM heatmaps to `notebooks/eem/phase3_eem_heatmaps.png`.
+* **Outputs:** Plots comparing true vs resolved loadings are saved to `notebooks/eem/experiments/simulated/phase3_resolved_profiles.png`, `notebooks/eem/experiments/simulated/phase3_resolved_absorptivities.png`, and EEM heatmaps to `notebooks/eem/experiments/simulated/phase3_eem_heatmaps.png`.
 
 ### 4.2 Amino Acids Mixture Benchmark (Experimental)
 An experimental dataset consisting of 5 mixtures containing Tryptophan, Tyrosine, and Phenylalanine under varying concentrations.
@@ -199,10 +216,10 @@ An experimental dataset consisting of 5 mixtures containing Tryptophan, Tyrosine
   # Download the raw benchmark mat file
   python -m src.eem.download_aminoacids
   # Run calibration training
-  python -m src.eem.train_aminoacids
+  python -m src.eem.run_aminoacids_experiment
   ```
 * **Performance:** Achieves an average score recovery of $R^2 \approx 0.973$ compared to true prepared concentrations, resolving highly overlapping components.
-* **Outputs:** Resolved spectra plots saved to `notebooks/eem/aminoacids_resolved_profiles.png`.
+* **Outputs:** Resolved spectra plots saved to `notebooks/eem/experiments/aminoacids/aminoacids_resolved_profiles.png`.
 
 ### 4.3 Copenhagen Honey Benchmark (Experimental)
 A complex real-world benchmark containing 110 honey samples (5 botanical origin classes, including authentic and adulterated samples) resolved using a 6-component PETN model.
@@ -211,14 +228,14 @@ A complex real-world benchmark containing 110 honey samples (5 botanical origin 
   # Download the raw benchmark mat file
   python -m src.eem.download_honey
   # Run calibration and classification evaluation
-  python -m src.eem.train_honey
+  python -m src.eem.run_honey_experiment
   ```
 * **Performance:** Evaluated using Leave-One-Out (LOO) cross-validation on the resolved sample scores:
   * **Binary Adulteration Accuracy (Authentic vs. Fake):** **100.00%** using SVM / Logistic Regression.
-  * **Multiclass Botanical Origin Classification:** **72.73%** accuracy across 5 classes (representing state-of-the-art resolution on raw un-curated datasets without outlier filtration).
+  * **Multiclass Botanical Origin Classification:** **74.55%** accuracy across 5 classes (representing state-of-the-art resolution on raw un-curated datasets without outlier filtration).
 * **Outputs:**
-  * Resolved spectral excitation/emission loadings and molar absorptivities saved to `notebooks/eem/honey_resolved_profiles.png`.
-  * PCA score cluster separation visualization saved to `notebooks/eem/honey_pca_separation.png`.
+  * Resolved spectral excitation/emission loadings and molar absorptivities saved to `notebooks/eem/experiments/honey/honey_resolved_profiles.png`.
+  * PCA score cluster separation visualization saved to `notebooks/eem/experiments/honey/honey_pca_separation.png`.
 
 ---
 

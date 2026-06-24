@@ -8,17 +8,48 @@ import io
 import os
 from scipy.io import loadmat
 
+def get_env_proxy():
+    """
+    Checks environment variables for proxy configurations.
+    """
+    for var in ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy']:
+        val = os.environ.get(var)
+        if val:
+            return val
+    return None
+
+def get_proxy_handler():
+    """
+    Creates urllib.request.ProxyHandler if environment proxy variables are defined.
+    """
+    proxy_url = get_env_proxy()
+    if proxy_url:
+        print(f"Proxy detected in environment: {proxy_url}")
+        return urllib.request.ProxyHandler({
+            'http': proxy_url,
+            'https': proxy_url
+        })
+    return None
+
 def download_and_extract():
     url = 'https://sid.erda.dk/share_redirect/fGlqQtWWut/HoneyEEM.zip'
-    dest_dir = 'data/raw/honey'
+    dest_dir = 'data/eem/honey'
     os.makedirs(dest_dir, exist_ok=True)
     
     dest_path = os.path.join(dest_dir, 'HoneyEEM.mat')
     
     if not os.path.exists(dest_path):
         print(f"Downloading from {url}...")
+        
+        # Build urllib opener with proxy support
+        proxy_handler = get_proxy_handler()
+        if proxy_handler:
+            opener = urllib.request.build_opener(proxy_handler)
+        else:
+            opener = urllib.request.build_opener()
+            
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
+        with opener.open(req) as response:
             zip_data = response.read()
         
         print("Extracting zip...")

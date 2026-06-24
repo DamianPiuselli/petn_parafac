@@ -20,7 +20,7 @@ def test_module_imports():
     from src.eem.generator import EEMGenerator
     from src.eem.model import PETNParafac
     from src.eem.loss import masked_mse_loss
-    from src.eem.train import train_petn_mvp
+    from src.eem.run_simulated_experiment import train_petn_mvp
     from src.common.utils import plot_resolved_vs_true_profiles
     
     assert EEMGenerator is not None

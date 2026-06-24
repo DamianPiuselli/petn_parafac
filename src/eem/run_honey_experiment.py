@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 
 from src.eem.model import PETNParafac
 from src.eem.loss import masked_mse_loss
+from src.common.utils import EarlyStopping
 
 def generate_honey_scattering_mask(ex_wavelens, em_wavelens):
     """
@@ -44,7 +45,7 @@ def generate_honey_scattering_mask(ex_wavelens, em_wavelens):
                 
     return mask
 
-def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
+def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42, patience=150, tol=1e-5):
     """
     Loads HoneyEEM.mat, builds masks, trains the PETN model, and evaluates botanical separation.
     """
@@ -53,9 +54,9 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     print(f"Using device: {device}")
 
     # 1. Load data
-    mat_path = 'data/raw/honey/HoneyEEM.mat'
+    mat_path = 'data/eem/honey/HoneyEEM.mat'
     if not os.path.exists(mat_path):
-        raise FileNotFoundError(f"Raw dataset not found at {mat_path}. Run src/download_honey.py first.")
+        raise FileNotFoundError(f"Raw dataset not found at {mat_path}. Run src/eem/download_honey.py first.")
         
     print(f"Loading raw honey dataset from {mat_path}...")
     from scipy.io import loadmat
@@ -155,6 +156,7 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # 4. Training Loop
     print(f"Training jointly for {epochs} epochs...")
+    early_stopping = EarlyStopping(patience=patience, tol=tol, min_epochs=100)
     for epoch in range(1, epochs + 1):
         model.train()
         optimizer.zero_grad()
@@ -167,8 +169,12 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
         optimizer.step()
         model.project_constraints()
         
+        loss_val = loss.item()
+        if early_stopping(epoch, loss_val, intensities):
+            break
+            
         if epoch % 100 == 0 or epoch == 1:
-            print(f"Epoch {epoch:04d}/{epochs} - Loss: {loss.item():.6f}")
+            print(f"Epoch {epoch:04d}/{epochs} - Loss: {loss_val:.6f}")
             
     # 5. Extract resolved parameters
     model.eval()
@@ -400,7 +406,8 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     scores_norm_pca = U_n[:, :2] * S_n[:2]
     
     # 7. Plotting and Visualizations
-    os.makedirs('notebooks', exist_ok=True)
+    save_dir = 'notebooks/eem/experiments/honey'
+    os.makedirs(save_dir, exist_ok=True)
     
     # Plot 1: Resolved Loadings and Molar Absorptivities
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
@@ -433,7 +440,7 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     axes[2].legend(ncol=2)
     
     plt.tight_layout()
-    plots_path = 'notebooks/eem/honey_resolved_profiles.png'
+    plots_path = os.path.join(save_dir, 'honey_resolved_profiles.png')
     plt.savefig(plots_path, dpi=200)
     plt.close()
     print(f"Saved resolved profiles to {plots_path}")
@@ -462,7 +469,7 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42):
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.legend(title='Botanical Origin', fontsize=10)
     
-    pca_path = 'notebooks/eem/honey_pca_separation.png'
+    pca_path = os.path.join(save_dir, 'honey_pca_separation.png')
     plt.tight_layout()
     plt.savefig(pca_path, dpi=200)
     plt.close()

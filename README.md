@@ -47,7 +47,11 @@ petn_parafac/
 │   │   ├── model.py        # PETN-PARAFAC model with IFE attenuation head
 │   │   ├── loss.py         # Custom masked MSE loss
 │   │   ├── generator.py    # Synthetic EEM dataset generator
-│   │   ├── train.py        # EEM training script
+│   │   ├── download_aminoacids.py # Downloader for amino acids dataset
+│   │   ├── download_honey.py      # Downloader for honey dataset
+│   │   ├── run_aminoacids_experiment.py # Amino acids experiment runner
+│   │   ├── run_honey_experiment.py      # Honey experiment runner
+│   │   ├── run_simulated_experiment.py  # Simulated EEM experiment runner
 │   │   ├── benchmark.py    # EEM comparative benchmark script
 │   │   └── README.md       # EEM-specific detailed documentation
 │   └── chroma/             # Chromatography Subpackage
@@ -99,14 +103,21 @@ The chromatography subpackage supports three major performance optimizations to 
 ### Running EEM Spectroscopy Benchmarks
 To train and validate on experimental/botanical datasets:
 ```bash
-# Copenhagen Honey benchmark
-PYTHONPATH=. python3 src/eem/train_honey.py
+# Download datasets
+python -m src.eem.download_aminoacids
+python -m src.eem.download_honey
 
-# Experimental Amino Acids benchmark
-PYTHONPATH=. python3 src/eem/train_aminoacids.py
+# Copenhagen Honey experiment
+python -m src.eem.run_honey_experiment
 
-# Comparative Monte Carlo run
-PYTHONPATH=. python3 src/eem/benchmark.py
+# Experimental Amino Acids experiment
+python -m src.eem.run_aminoacids_experiment
+
+# Simulated EEM experiment
+python -m src.eem.run_simulated_experiment
+
+# Comparative benchmark run
+python -m src.eem.benchmark
 ```
 
 ### Running Chromatography Alignment Benchmarks

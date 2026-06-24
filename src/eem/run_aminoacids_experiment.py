@@ -13,6 +13,7 @@ from scipy.optimize import linear_sum_assignment
 
 from src.eem.model import PETNParafac
 from src.eem.loss import masked_mse_loss
+from src.common.utils import EarlyStopping
 
 def generate_aminoacids_scattering_mask(ex_wavelens, em_wavelens):
     """
@@ -41,14 +42,14 @@ def generate_aminoacids_scattering_mask(ex_wavelens, em_wavelens):
                 
     return mask
 
-def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43):
+def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43, patience=150, tol=1e-5):
     """
     Loads amino.mat, trains PETNParafac, and prints/plots evaluation results.
     """
     # 1. Load data
-    mat_path = 'data/raw/amino.mat'
+    mat_path = 'data/eem/aminoacids/amino.mat'
     if not os.path.exists(mat_path):
-        raise FileNotFoundError(f"Raw dataset not found at {mat_path}. Run src/download_aminoacids.py first.")
+        raise FileNotFoundError(f"Raw dataset not found at {mat_path}. Run src/eem/download_aminoacids.py first.")
         
     print(f"Loading raw dataset from {mat_path}...")
     mat = loadmat(mat_path)
@@ -109,6 +110,7 @@ def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43):
     
     # 4. Training loop
     print(f"Training jointly from scratch in full-batch mode for {epochs} epochs...")
+    early_stopping = EarlyStopping(patience=patience, tol=tol, min_epochs=100)
     for epoch in range(1, epochs + 1):
         model.train()
         optimizer.zero_grad()
@@ -120,8 +122,12 @@ def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43):
         optimizer.step()
         model.project_constraints()
         
+        loss_val = loss.item()
+        if early_stopping(epoch, loss_val, intensities):
+            break
+            
         if epoch % 300 == 0 or epoch == 1:
-            print(f"Epoch {epoch:04d}/{epochs} - Loss: {loss.item():.6f}")
+            print(f"Epoch {epoch:04d}/{epochs} - Loss: {loss_val:.6f}")
             
     # 5. Extract trained weights
     model.eval()
@@ -240,8 +246,9 @@ def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43):
     axes[2].legend(fontsize='small', ncol=3, loc='upper center', bbox_to_anchor=(0.5, 1.15))
     
     plt.tight_layout()
-    os.makedirs('notebooks/eem', exist_ok=True)
-    plot_path = 'notebooks/eem/aminoacids_resolved_profiles.png'
+    save_dir = 'notebooks/eem/experiments/aminoacids'
+    os.makedirs(save_dir, exist_ok=True)
+    plot_path = os.path.join(save_dir, 'aminoacids_resolved_profiles.png')
     plt.savefig(plot_path, dpi=300)
     plt.close()
     print(f"\nResolved profiles plot saved to {plot_path}")

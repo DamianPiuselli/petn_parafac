@@ -325,13 +325,13 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43, patience=150,
     plot_resolved_vs_true_profiles(
         true_B, true_C, aligned_B, aligned_C,
         generator.ex_wavelens, generator.em_wavelens,
-        save_path='notebooks/eem/phase3_resolved_profiles.png'
+        save_path='notebooks/eem/experiments/simulated/phase3_resolved_profiles.png'
     )
     
     plot_resolved_absorptivities(
         E_true, M_true, aligned_E, aligned_M,
         generator.ex_wavelens, generator.em_wavelens,
-        save_path='notebooks/eem/phase3_resolved_absorptivities.png'
+        save_path='notebooks/eem/experiments/simulated/phase3_resolved_absorptivities.png'
     )
     
     # Save scores comparison plot
@@ -339,7 +339,7 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43, patience=150,
     plot_scores_comparison(
         true_A, aligned_A,
         component_names=fluorophore_names,
-        save_path='notebooks/eem/scores_comparison.png'
+        save_path='notebooks/eem/experiments/simulated/scores_comparison.png'
     )
     
     # Calculate reconstructed observed EEM for heatmap display
@@ -358,7 +358,7 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43, patience=150,
         X_reconstructed=X_reconstructed[0],
         ex_wavelens=generator.ex_wavelens,
         em_wavelens=generator.em_wavelens,
-        save_path='notebooks/eem/phase3_eem_heatmaps.png'
+        save_path='notebooks/eem/experiments/simulated/phase3_eem_heatmaps.png'
     )
     
     # Write report.md
@@ -403,7 +403,7 @@ The following plots have been generated and saved to the EEM output folder:
 """
     
     import os
-    report_path = 'notebooks/eem/report.md'
+    report_path = 'notebooks/eem/experiments/simulated/simulated_experiment_report.md'
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
     with open(report_path, 'w') as f:
         f.write(report_content)
