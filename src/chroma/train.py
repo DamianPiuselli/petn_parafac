@@ -17,7 +17,8 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
                       num_segments=4, tol=1e-6, patience=50, num_components=3,
                       derivative_order=0, sg_window_size=11, sg_polyorder=2, batch_size=None,
                       compile_model=True, threshold=None, lambda_res=10.0, lambda_c=1e-4,
-                      lambda_raw=0.0, lambda_smooth_B=0.0, model_type=None, init_svd=True):
+                      lambda_raw=0.0, lambda_smooth_B=0.0, model_type=None, init_svd=True,
+                      min_epochs=None):
     """
     Trains the Chroma-PETN model on the provided dataset.
     """
@@ -103,7 +104,7 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
         else:
             y_target = X
             
-        early_stopping = EarlyStopping(patience=patience, tol=tol, min_epochs=50)
+        early_stopping = EarlyStopping(patience=patience, tol=tol, min_epochs=min_epochs)
         
         for epoch in range(epochs):
             optimizer.zero_grad()
@@ -190,7 +191,7 @@ def train_chroma_petn(dataset, epochs=1200, lr=0.01, warp_reg_coef=0.001, warp_t
         )
 
         
-        early_stopping = EarlyStopping(patience=patience, tol=tol, min_epochs=50)
+        early_stopping = EarlyStopping(patience=patience, tol=tol, min_epochs=min_epochs)
         
         for epoch in range(epochs):
             loss_physics_val = 0.0

@@ -602,7 +602,7 @@ es_enabled = st.sidebar.checkbox("Enable Early Stopping", value=True)
 if es_enabled:
     es_patience = st.sidebar.number_input("Patience (epochs)", min_value=5, max_value=1000, value=50, step=5)
     es_tol = st.sidebar.number_input("Tolerance (rel change)", min_value=1e-8, max_value=1e-1, value=1e-6, step=1e-6, format="%.1e")
-    es_min_epochs = st.sidebar.number_input("Min Warmup Epochs", min_value=0, max_value=1000, value=250, step=10)
+    es_min_epochs = st.sidebar.number_input("Min Warmup Epochs", min_value=0, max_value=int(total_epochs), value=min(250, int(total_epochs)), step=10)
 else:
     es_patience = 999999
     es_tol = 0.0
@@ -808,7 +808,7 @@ else:
     else:
         st.session_state.early_stopping.patience = es_patience
         st.session_state.early_stopping.tol = es_tol
-        st.session_state.early_stopping.min_epochs = max(0, min(es_min_epochs, es_patience - 1))
+        st.session_state.early_stopping.min_epochs = max(0, es_min_epochs)
 
 # --- Helper functions to render custom UI structures ---
 def render_metrics_grid(epoch, total_epochs, loss, r2_score, r2_b, r2_c, mode="EEM"):

@@ -460,11 +460,14 @@ class EarlyStopping:
     Uses Fraction of Variance Unexplained (FVU = MSE / Var(y)) to normalize loss across scales,
     and monitors relative improvement to prevent premature stopping on slow learning phases.
     """
-    def __init__(self, patience=50, tol=1e-5, min_epochs=50):
+    def __init__(self, patience=50, tol=1e-5, min_epochs=None):
         self.patience = patience
         self.tol = tol
-        # Allow min_epochs to adapt if patience is small (for testing)
-        self.min_epochs = max(0, min(min_epochs, patience - 1))
+        if min_epochs is None:
+            # Allow min_epochs to adapt if patience is small (for testing)
+            self.min_epochs = max(0, patience - 1)
+        else:
+            self.min_epochs = max(0, min_epochs)
         
         self.best_loss = float('inf')
         self.patience_counter = 0
