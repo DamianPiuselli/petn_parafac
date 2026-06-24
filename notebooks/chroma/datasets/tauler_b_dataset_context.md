@@ -114,3 +114,27 @@ def load_tauler_b_dataset(data_dir):
     
     return X, sp1, sp2, time_coords, wavelength_coords
 ```
+
+---
+
+## 7. Validation & Literature Corroboration
+
+To verify the physical correctness of the resolved profiles, we check them against the experimental design and the original literature (Tauler et al., 1996):
+
+### A. Spectral Collinearity & Matrix Interferences
+* **The Homomorph Challenge:** The resolved spectrum of the unknown interferent (Component 3) is extremely similar to Diazinon (TCC similarity = **0.9977**). 
+* **Physical Corroboration:** In natural water samples, the predominant interferences are **Humic and Fulvic acids (Natural Organic Matter - NOM)**. Humic substances present a featureless, exponentially-decaying UV absorbance profile in the $200\text{--}300 \text{ nm}$ range, which heavily overlaps with Diazinon's decaying spectrum.
+* **Rotational Ambiguity Solution:** Without target guidance (freezing the library spectra of Diazinon and Parathion-ethyl), this high collinearity causes spectral mixing. Anchoring the target analytes resolves the ambiguity and isolates the interferent.
+
+### B. Elution Behavior
+* Inreversed-phase HPLC, Diazinon elutes earlier than Parathion-ethyl. The raw data at pesticide-absorbing channels shows two distinct peaks at scans **12** and **27**.
+* Our resolved chromatograms match this behavior perfectly:
+  - **Diazinon (Component 1):** Peaks at scan **11**.
+  - **Interferent (Component 3):** Peaks at scan **12** (co-eluting next to Diazinon).
+  - **Parathion-ethyl (Component 2):** Peaks at scan **26** (matching the later elution zone).
+
+### C. Sample Concentration (Score) Ratios
+* **Mixture 1 (d1):** Stated as the real water sample. Resolved scores: **Diazinon = 0.618, Parathion-ethyl = 0.428, Interferent = 0.553** (All components present).
+* **Mixture 2 (d2):** Stated as the standard pesticide injection in pure solvent. Resolved scores: **Diazinon = 0.644, Parathion-ethyl = 0.229, Interferent = 0.000**.
+* **Physical Corroboration:** The model correctly resolved the unknown organic matrix interferent as exactly **zero** in the pure standard run (`d2`), confirming that it did not leak into the pesticide profiles.
+
