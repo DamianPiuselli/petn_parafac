@@ -38,6 +38,34 @@ The library does not use soft loss penalties; it embeds physical laws directly i
   * **HPLC**: Modeled continuously; incorporates trainable baseline offset parameters and Savitzky-Golay derivative filters.
   * **GC-MS**: Modeled sparsely; incorporates masked losses, spectral L1 sparsity, and sample-specific residual shape matrices ($\Delta B_i$) to handle severe column overloading.
 
+### 4. DATASET INTEGRATION & EXPERIMENTATION WORKFLOW
+Whenever integrating new chromatographic or spectroscopic datasets (simulated or real-world), always adhere to the following 4-step workflow:
+
+1. **Automated Downloader (`download_<dataset_name>.py`):**
+   * Write an isolated script in `src/<domain>/` to automate the download, checksum verification, and extraction of raw files to `data/<domain>/<dataset_name>/`.
+   * The script must handle corporate proxy configurations dynamically (supporting `HTTP_PROXY`, `http_proxy`, `HTTPS_PROXY`, `https_proxy` environment variables via `urllib.request.ProxyHandler`).
+
+2. **Dataset Context Primer (`<dataset_name>_dataset_context.md`):**
+   * Place a primer in `notebooks/<domain>/datasets/` detailing:
+     * **Ecological & Chemical Context:** Biological/chemical species analyzed, analytical instruments, and monitored channels.
+     * **Directory & File Structure:** Path locations and description of raw/extracted files.
+     * **Detailed Data Structures:** Expected array shapes and stacked 3D tensor configurations.
+     * **Physical/Selectivity Constraints:** Zero-scores mappings, locked spectra, or other physical penalties needed to resolve rotational ambiguity.
+     * **Python Loading Recipe:** A minimal copy-pasteable loading block using standard libraries (e.g. `scipy.io` or `pandas`).
+     * **Validation & Literature Corroboration:** Cross-references to standard publications confirming resolved shapes, peaks, and scores.
+
+3. **Experiment Runner (`run_<dataset_name>_experiment.py`):**
+   * Write a script in `src/<domain>/` to load the dataset, stack runs, and train PETN models with appropriate physical constraints (e.g., selectivity score clamping or target spectral locking).
+   * Automatically resolve permutation ambiguity by matching resolved components with pure library standards (using Tucker Congruence Coefficient / TCC).
+   * Export resolved loadings as standard CSV files to `notebooks/<domain>/experiments/<dataset_name>/`.
+
+4. **Markdown Report & Visualizations (`<dataset_name>_experiment_report.md`):**
+   * Write an automated markdown report containing:
+     * **Model Configuration:** Parameter settings, warping types, regularizations, and convergence details.
+     * **Validation Metrics:** Explained variance ($R^2$), loss, and similarity metrics (TCC similarity).
+     * **Score Matrices & Warp Tables:** Markdown-formatted summaries of scores and offsets (always format tables using custom helpers to avoid external library dependencies like `tabulate`).
+     * **Plots:** Elution profile comparisons, score distributions, TICs (unaligned vs. aligned), and fit overlays saved in the same directory.
+
 ### CURRENT WORKING BACKLOG:
 * **EEM Spectroscopy Track:**
   * *(Backlog is currently empty - pending next phase of changes)*
