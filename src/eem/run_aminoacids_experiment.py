@@ -43,7 +43,7 @@ def generate_aminoacids_scattering_mask(ex_wavelens, em_wavelens):
                 
     return mask
 
-def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43, patience=150, tol=1e-5):
+def train_aminoacids_dataset(epochs=3000, lr=0.015, seed=43, patience=150, tol=5e-4):
     """
     Loads amino.mat, trains PETNParafac, and prints/plots evaluation results.
     """
@@ -123,8 +123,27 @@ def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43, patience=150, tol=1
         optimizer.step()
         model.project_constraints()
         
+        # Enforce target-guided selectivity constraints on pure standards (Samples 0, 1, 2)
+        with torch.no_grad():
+            if model.use_softplus:
+                lock_val = -15.0
+                model.sample_embeddings.weight[0, 1] = lock_val
+                model.sample_embeddings.weight[0, 2] = lock_val
+                model.sample_embeddings.weight[1, 0] = lock_val
+                model.sample_embeddings.weight[1, 2] = lock_val
+                model.sample_embeddings.weight[2, 0] = lock_val
+                model.sample_embeddings.weight[2, 1] = lock_val
+            else:
+                model.sample_embeddings.weight[0, 1] = 0.0
+                model.sample_embeddings.weight[0, 2] = 0.0
+                model.sample_embeddings.weight[1, 0] = 0.0
+                model.sample_embeddings.weight[1, 2] = 0.0
+                model.sample_embeddings.weight[2, 0] = 0.0
+                model.sample_embeddings.weight[2, 1] = 0.0
+        
         loss_val = loss.item()
         if early_stopping(epoch, loss_val, intensities):
+            print(f"Early stopping triggered at epoch {epoch} (Final Loss: {loss_val:.6f})")
             break
             
         if epoch % 300 == 0 or epoch == 1:
@@ -133,9 +152,7 @@ def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43, patience=150, tol=1
     # 5. Extract trained weights
     model.eval()
     with torch.no_grad():
-        pred_A = model.sample_embeddings.weight.cpu().numpy()
-        pred_B = model.ex_embeddings.weight.cpu().numpy()
-        pred_C = model.em_embeddings.weight.cpu().numpy()
+        pred_A, pred_B, pred_C, _, _ = model.get_resolved_factors()
         pred_E, pred_M = model.get_learned_absorptivities()
         
     # 6. Align predicted components to Tryptophan, Tyrosine, and Phenylalanine

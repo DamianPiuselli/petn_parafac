@@ -5,12 +5,12 @@ Below are the recovery metrics (R² scores) for resolved concentrations and reco
 
 | Component | Amino Acid Label | Concentration Recovery (A) R² | Resolved Ex Peak (nm) | Resolved Em Peak (nm) |
 |---|---|---|---|---|
-| **Component 1** | Tryptophan (Trp) | 0.998344 | 276.0 | 359.0 |
-| **Component 2** | Tyrosine (Tyr) | 0.944236 | 275.0 | 308.0 |
-| **Component 3** | Phenylalanine (Phe) | 0.976713 | 256.0 | 287.0 |
+| **Component 1** | Tryptophan (Trp) | 0.999977 | 276.0 | 358.0 |
+| **Component 2** | Tyrosine (Tyr) | 0.999832 | 274.0 | 305.0 |
+| **Component 3** | Phenylalanine (Phe) | 0.999913 | 256.0 | 287.0 |
 
 ### Key Averages:
-- **Average Concentration Score R² (A):** 0.973098
+- **Average Concentration Score R² (A):** 0.999907
 
 ## 2. Visualization Artifacts
 The following plots have been generated and saved to the EEM output folder:

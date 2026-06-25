@@ -4,11 +4,11 @@
 Below are the botanical classification accuracies achieved by applying different supervised and unsupervised models to the resolved concentration scores (A) under leave-one-out cross-validation.
 
 ### Supervised Classification Accuracy (Multiclass, Autoscale)
-- **PLS-DA:** 61.82%
-- **SVM (Linear):** 70.91%
-- **SVM (RBF):** 69.09%
-- **Logistic Regression:** 71.82%
-- **Random Forest:** 75.45%
+- **PLS-DA:** 66.36%
+- **SVM (Linear):** 76.36%
+- **SVM (RBF):** 66.36%
+- **Logistic Regression:** 67.27%
+- **Random Forest:** 69.09%
 
 ### Binary Classification Accuracy (Authentic vs. Adulterated)
 - **SVM (Linear):** 100.00%
@@ -16,8 +16,8 @@ Below are the botanical classification accuracies achieved by applying different
 - **Logistic Regression:** 100.00%
 
 ### Attenuation Head Diagnostics
-- **Average Attenuation Coefficient (Gamma):** 0.6946 (Min: 0.0000, Max: 0.9684)
-- **Learned Component Molar Absorptivities (Alpha):** 3.0128e-03, 2.7265e-02, 7.2959e-02, 5.5320e-03, 7.3258e-03, 4.5796e-02
+- **Average Attenuation Coefficient (Gamma):** 0.8790 (Min: 0.5337, Max: 0.9720)
+- **Learned Component Molar Absorptivities (Alpha):** 5.7773e-03, 8.5732e-03, 1.4024e-02, 1.2967e-02, 2.0182e-02, 5.1155e-03
 
 ## 2. Visualization Artifacts
 The following plots have been generated and saved to the EEM output folder:

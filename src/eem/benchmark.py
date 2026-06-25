@@ -146,7 +146,8 @@ def run_petn_parafac(generator, dataset, model_type, epochs=1500, lr=0.008, seed
             em_wavelens=generator.em_wavelens,
             ex_bg=None,
             em_bg=None,
-            num_components=3
+            num_components=3,
+            use_softplus=False
         )
         model.alpha.data.fill_(0.0)
         model.alpha.requires_grad = False
@@ -166,9 +167,7 @@ def run_petn_parafac(generator, dataset, model_type, epochs=1500, lr=0.008, seed
     # Evaluate
     model.eval()
     with torch.no_grad():
-        pred_A = model.sample_embeddings.weight.cpu().numpy()
-        pred_B = model.ex_embeddings.weight.cpu().numpy()
-        pred_C = model.em_embeddings.weight.cpu().numpy()
+        pred_A, pred_B, pred_C, _, _ = model.get_resolved_factors()
         
     aligned_A, aligned_B, aligned_C, metrics = match_and_align_components(
         dataset['A'], dataset['B'], dataset['C'], pred_A, pred_B, pred_C

@@ -687,7 +687,8 @@ if track_mode == "EEM Spectroscopy":
                 em_wavelens=generator.em_wavelens,
                 ex_bg=None,
                 em_bg=None,
-                num_components=3
+                num_components=3,
+                use_softplus=False
             )
             st.session_state.model.alpha.data.fill_(0.0)
             st.session_state.model.alpha.requires_grad = False
@@ -924,7 +925,8 @@ def action_generate_dataset():
                 em_wavelens=generator.em_wavelens,
                 ex_bg=None,
                 em_bg=None,
-                num_components=3
+                num_components=3,
+                use_softplus=False
             )
             model.alpha.data.fill_(0.0)
             model.alpha.requires_grad = False
@@ -1128,9 +1130,7 @@ def run_training_step(num_epochs, lr_val, model_arch):
     
     st.session_state.model.eval()
     with torch.no_grad():
-        pred_A = st.session_state.model.sample_embeddings.weight.cpu().numpy()
-        pred_B = st.session_state.model.ex_embeddings.weight.cpu().numpy()
-        pred_C = st.session_state.model.em_embeddings.weight.cpu().numpy()
+        pred_A, pred_B, pred_C, _, _ = st.session_state.model.get_resolved_factors()
         pred_E, pred_M = st.session_state.model.get_learned_absorptivities()
         
     aligned_A, aligned_B, aligned_C, metrics = match_and_align_components(

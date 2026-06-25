@@ -273,12 +273,10 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43, patience=150,
     # 4. Extract trained weights
     model.eval()
     with torch.no_grad():
-        pred_A = model.sample_embeddings.weight.cpu().numpy()
-        pred_B = model.ex_embeddings.weight.cpu().numpy()
-        pred_C = model.em_embeddings.weight.cpu().numpy()
+        pred_A, pred_B, pred_C, _, _ = model.get_resolved_factors()
         pred_E, pred_M = model.get_learned_absorptivities()
-        pred_ex_bg = model.ex_bg.cpu().numpy()
-        pred_em_bg = model.em_bg.cpu().numpy()
+        pred_ex_bg = model.ex_bg.cpu().numpy() if not model.learnable_bg else model.ex_bg.detach().cpu().numpy()
+        pred_em_bg = model.em_bg.cpu().numpy() if not model.learnable_bg else model.em_bg.detach().cpu().numpy()
         
     # 5. Match and align components
     aligned_A, aligned_B, aligned_C, metrics = match_and_align_components(

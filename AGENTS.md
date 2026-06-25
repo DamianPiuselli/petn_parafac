@@ -71,9 +71,9 @@ Whenever integrating new chromatographic or spectroscopic datasets (simulated or
 
 ### CURRENT WORKING BACKLOG:
 * **EEM Spectroscopy Track:**
-  * Implement smooth differentiable parameterizations (e.g., softplus reparameterization) for score and profile embeddings to mitigate gradient trapping at exactly `0.0`.
-  * Support learnable/dynamic background CDOM solvent profiles with smoothness regularization to accommodate sample-to-sample baseline drift.
-  * Research and develop automatic component rank selection using sparse prior embedding layers to automatically suppress redundant variables.
+  * **[Completed]** Implement smooth differentiable parameterizations (e.g., softplus reparameterization) for score and profile embeddings to mitigate gradient trapping at exactly `0.0`.
+  * **[Completed]** Support learnable/dynamic background CDOM solvent profiles with smoothness regularization to accommodate sample-to-sample baseline drift.
+  * **[Completed]** Research and develop automatic component rank selection using sparse prior embedding layers to automatically suppress redundant variables.
 * **Chromatography Track:**
   * **[Completed]** Implement preprocessing/resampling utility: Added `resample_chromatographic_runs` in [preprocessing.py](file:///home/damianp/Proyectos/pinn_parafac/src/chroma/preprocessing.py) supporting 1D linear and cubic spline interpolation to compile non-uniform raw runs into a 3D dense tensor. Fully unit-tested in [test_preprocessing.py](file:///home/damianp/Proyectos/pinn_parafac/tests/chroma/test_preprocessing.py).
   * **[Completed]** Downloaded and resolved Real HPLC-DAD Dataset A (Tauler et al., 1996): Implemented [download_tauler_a.py](file:///home/damianp/Proyectos/pinn_parafac/src/chroma/download_tauler_a.py) and [run_tauler_a_experiment.py](file:///home/damianp/Proyectos/pinn_parafac/src/chroma/run_tauler_a_experiment.py) to train Chroma-PETN under physical selectivity constraints. Resolved pure spectra with **0.9964** (Azinphos-ethyl) and **0.9986** (Fenitrothion) TCC similarity to library standards.

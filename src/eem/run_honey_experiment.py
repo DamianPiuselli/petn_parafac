@@ -180,10 +180,7 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42, patienc
     # 5. Extract resolved parameters
     model.eval()
     with torch.no_grad():
-        pred_A = model.sample_embeddings.weight.cpu().numpy()
-        pred_B = model.ex_embeddings.weight.cpu().numpy()
-        pred_C = model.em_embeddings.weight.cpu().numpy()
-        pred_alpha = model.alpha.cpu().numpy()
+        pred_A, pred_B, pred_C, pred_alpha, _ = model.get_resolved_factors()
         
     # Resolve Scale Ambiguity post-training in NumPy:
     # Normalize B and C to unit L2 norm, and scale A and alpha accordingly

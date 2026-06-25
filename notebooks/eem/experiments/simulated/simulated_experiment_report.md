@@ -5,15 +5,15 @@
  
  | Component | Fluorophore Label | Score (A) R² | Score (A) CosSim | Excitation (B) R² | Excitation (B) CosSim | Emission (C) R² | Emission (C) CosSim | Excitation Abs (E) R² | Emission Abs (M) R² |
  |---|---|---|---|---|---|---|---|---|---|
-| **Component 1** | Fluorophore Component 1 | 0.995983 | 0.998204 | 0.943051 | 0.984736 | 0.974621 | 0.990254 | 0.895748 | 0.000000 |
-| **Component 2** | Fluorophore Component 2 | 0.995087 | 0.997628 | 0.984711 | 0.994455 | 0.903609 | 0.958170 | 0.980399 | 0.000000 |
-| **Component 3** | Fluorophore Component 3 | 0.995960 | 0.998811 | 0.993995 | 0.997252 | 0.946021 | 0.978914 | 0.989628 | 0.000000 |
+| **Component 1** | Fluorophore Component 1 | 0.986404 | 0.996572 | 0.920324 | 0.983620 | 0.977450 | 0.993409 | 0.929644 | 0.000000 |
+| **Component 2** | Fluorophore Component 2 | 0.988449 | 0.995760 | 0.979635 | 0.994194 | 0.918563 | 0.967565 | 0.679359 | 0.000000 |
+| **Component 3** | Fluorophore Component 3 | 0.997019 | 0.998888 | 0.987157 | 0.993566 | 0.951897 | 0.981976 | 0.693346 | 0.000000 |
 
  ### Key Averages:
- - **Average Concentration Score R² (A):** 0.995677
- - **Average Excitation Loading R² (B):** 0.973919
- - **Average Emission Loading R² (C):** 0.941417
- - **Average Excitation Absorptivity R² (E):** 0.955258
+ - **Average Concentration Score R² (A):** 0.990624
+ - **Average Excitation Loading R² (B):** 0.962372
+ - **Average Emission Loading R² (C):** 0.949304
+ - **Average Excitation Absorptivity R² (E):** 0.767450
  - **Average Emission Absorptivity R² (M):** 0.000000
  
  ## 2. Visualization Artifacts
