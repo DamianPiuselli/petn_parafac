@@ -177,34 +177,4 @@ def test_learnable_and_dynamic_bg():
     assert isinstance(smooth_loss, torch.Tensor)
     assert smooth_loss >= 0.0
 
-def test_automatic_rank_selection():
-    """Verify automatic component rank selection features and sparsity loss."""
-    ex_w, em_w = get_dummy_wavelengths(10, 10)
-    model = PETNParafac(
-        num_samples=3, num_ex=10, num_em=10,
-        ex_wavelens=ex_w, em_wavelens=em_w,
-        num_components=4,
-        use_softplus=True,
-        enable_rank_selection=True
-    )
-    
-    assert isinstance(model.comp_weights, torch.nn.Parameter)
-    assert model.comp_weights.shape == (4,)
-    
-    # Extract resolved factors should return component weights
-    _, _, _, _, comp_weights_np = model.get_resolved_factors()
-    assert comp_weights_np.shape == (4,)
-    assert np.all(comp_weights_np >= 0.0)
-    
-    # Forward pass
-    sample_idx = torch.tensor([0, 1, 2])
-    ex_idx = torch.tensor([0, 1, 2])
-    em_idx = torch.tensor([0, 1, 2])
-    
-    pred = model(sample_idx, ex_idx, em_idx)
-    assert pred.shape == (3,)
-    
-    # Sparsity loss should be non-negative
-    sparsity_loss = model.get_sparsity_loss()
-    assert isinstance(sparsity_loss, torch.Tensor)
-    assert sparsity_loss > 0.0
+

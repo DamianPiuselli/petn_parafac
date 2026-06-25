@@ -10,13 +10,11 @@ class PETNParafac(nn.Module):
     Physics-Embedded Tensor Network (PETN) implementing the trilinear PARAFAC core.
     It embeds sample indices, excitation wavelengths, and emission wavelengths
     into positive component representations and models their trilinear interaction.
-    Supports softplus reparameterization, learnable/dynamic background CDOM solvent profiles,
-    and automatic component rank selection.
+    Supports softplus reparameterization and learnable/dynamic background CDOM solvent profiles.
     """
     def __init__(self, num_samples, num_ex, num_em, ex_wavelens, em_wavelens,
                  ex_bg=None, em_bg=None, num_components=3,
-                 use_softplus=True, learnable_bg=False, dynamic_bg=False,
-                 enable_rank_selection=False):
+                 use_softplus=True, learnable_bg=False, dynamic_bg=False):
         super().__init__()
         self.num_samples = num_samples
         self.num_ex = num_ex
@@ -25,7 +23,6 @@ class PETNParafac(nn.Module):
         self.use_softplus = use_softplus
         self.learnable_bg = learnable_bg
         self.dynamic_bg = dynamic_bg
-        self.enable_rank_selection = enable_rank_selection
         
         # 1. Trilinear core embedding layers
         self.sample_embeddings = nn.Embedding(num_samples, num_components)
@@ -35,11 +32,7 @@ class PETNParafac(nn.Module):
         # 2. IFE Molar absorptivity scaling parameters (non-negative)
         self.alpha = nn.Parameter(torch.ones(num_components) * 0.1)
         
-        # 3. Optional automatic component rank selection salience weights
-        if self.enable_rank_selection:
-            self.comp_weights = nn.Parameter(torch.ones(num_components))
-        
-        # 4. Register/parameterize physical background CDOM profiles
+        # 3. Register/parameterize physical background CDOM profiles
         if ex_bg is None:
             ex_bg = torch.zeros(num_ex)
         else:
@@ -67,7 +60,7 @@ class PETNParafac(nn.Module):
         self.register_buffer('em_wavelens', torch.tensor(em_wavelens, dtype=torch.float32))
         
         self.reset_parameters()
-
+ 
     def reset_parameters(self):
         """Initializes all embeddings with positive values, taking softplus into account if enabled."""
         if self.use_softplus:
@@ -85,23 +78,16 @@ class PETNParafac(nn.Module):
                 
                 y_alpha = torch.empty_like(self.alpha).uniform_(0.01, 0.20)
                 self.alpha.copy_(torch.log(torch.exp(y_alpha) - 1.0))
-                
-                if self.enable_rank_selection:
-                    y_comp = torch.empty_like(self.comp_weights).uniform_(0.8, 1.2)
-                    self.comp_weights.copy_(torch.log(torch.exp(y_comp) - 1.0))
         else:
             nn.init.uniform_(self.sample_embeddings.weight, a=0.1, b=1.0)
             nn.init.uniform_(self.ex_embeddings.weight, a=0.1, b=1.0)
             nn.init.uniform_(self.em_embeddings.weight, a=0.1, b=1.0)
             nn.init.uniform_(self.alpha.data, a=0.01, b=0.20)
-            
-            if self.enable_rank_selection:
-                nn.init.uniform_(self.comp_weights.data, a=0.8, b=1.2)
 
         if self.dynamic_bg:
             nn.init.zeros_(self.ex_bg_drift.weight)
             nn.init.zeros_(self.em_bg_drift.weight)
-
+ 
     @torch.no_grad()
     def project_constraints(self):
         """
@@ -115,8 +101,6 @@ class PETNParafac(nn.Module):
             self.ex_embeddings.weight.clamp_(min=0.0)
             self.em_embeddings.weight.clamp_(min=0.0)
             self.alpha.clamp_(min=0.0)
-            if self.enable_rank_selection:
-                self.comp_weights.clamp_(min=0.0)
                 
         if self.learnable_bg:
             if isinstance(self.ex_bg, nn.Parameter):
@@ -142,19 +126,17 @@ class PETNParafac(nn.Module):
             B = torch.nn.functional.softplus(self.ex_embeddings.weight)
             C = torch.nn.functional.softplus(self.em_embeddings.weight)
             alpha = torch.nn.functional.softplus(self.alpha)
-            comp_weights = torch.nn.functional.softplus(self.comp_weights) if self.enable_rank_selection else None
         else:
             A = self.sample_embeddings.weight
             B = self.ex_embeddings.weight
             C = self.em_embeddings.weight
             alpha = self.alpha
-            comp_weights = self.comp_weights if self.enable_rank_selection else None
             
         A_np = A.cpu().numpy()
         B_np = B.cpu().numpy()
         C_np = C.cpu().numpy()
         alpha_np = alpha.cpu().numpy()
-        comp_weights_np = comp_weights.cpu().numpy() if comp_weights is not None else None
+        comp_weights_np = None  # Keep for backward compatibility
         
         return A_np, B_np, C_np, alpha_np, comp_weights_np
 
@@ -168,13 +150,8 @@ class PETNParafac(nn.Module):
             M: 2D numpy array of shape (num_em, num_components)
         """
         import numpy as np
-        _, B_np, _, alpha_np, comp_weights_np = self.get_resolved_factors()
-        
-        if self.enable_rank_selection:
-            E = alpha_np * B_np * comp_weights_np
-        else:
-            E = alpha_np * B_np
-            
+        _, B_np, _, alpha_np, _ = self.get_resolved_factors()
+        E = alpha_np * B_np
         M = np.zeros((self.num_em, self.num_components))
         return E, M
 
@@ -204,20 +181,6 @@ class PETNParafac(nn.Module):
             
         return loss
 
-    def get_sparsity_loss(self):
-        """
-        Computes the L1 sparsity loss on the component salience weights for automatic rank selection.
-        """
-        if not self.enable_rank_selection:
-            return torch.tensor(0.0)
-            
-        if self.use_softplus:
-            weights = torch.nn.functional.softplus(self.comp_weights)
-        else:
-            weights = self.comp_weights
-            
-        return torch.sum(torch.abs(weights))
-
     def forward(self, sample_idx, ex_idx, em_idx):
         """
         Computes the forward pass with sample-dependent IFE attenuation.
@@ -234,27 +197,17 @@ class PETNParafac(nn.Module):
             b = torch.nn.functional.softplus(self.ex_embeddings(ex_idx))
             c = torch.nn.functional.softplus(self.em_embeddings(em_idx))
             alpha = torch.nn.functional.softplus(self.alpha)
-            if self.enable_rank_selection:
-                comp_weights = torch.nn.functional.softplus(self.comp_weights)
         else:
             a = self.sample_embeddings(sample_idx)
             b = self.ex_embeddings(ex_idx)
             c = self.em_embeddings(em_idx)
             alpha = self.alpha
-            if self.enable_rank_selection:
-                comp_weights = self.comp_weights
                 
         # 2. Calculate unattenuated true intensity
-        if self.enable_rank_selection:
-            I_true = torch.sum(a * b * c * comp_weights, dim=1)
-        else:
-            I_true = torch.sum(a * b * c, dim=1)
+        I_true = torch.sum(a * b * c, dim=1)
             
         # 3. Calculate total absorbances
-        if self.enable_rank_selection:
-            Abs_ex = torch.sum(a * (alpha * b) * comp_weights, dim=1)
-        else:
-            Abs_ex = torch.sum(a * (alpha * b), dim=1)
+        Abs_ex = torch.sum(a * (alpha * b), dim=1)
             
         if self.dynamic_bg:
             ex_drift = self.ex_bg_drift(sample_idx).gather(1, ex_idx.unsqueeze(1)).squeeze(1)
