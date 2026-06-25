@@ -59,7 +59,7 @@ class GCMS_PETN(BaseChromaPETN):
             mse_loss = torch.mean((X_pred[mask] - X_true[mask])**2)
         
         # 2. L1 Sparsity on Spectra (C matrix)
-        l1_penalty = self.lambda_c * torch.sum(torch.abs(self.C))
+        l1_penalty = self.lambda_c * torch.sum(torch.abs(self.C_normalized))
         
         # 3. Heavy L2 Penalty on shape residuals
         l2_residual = self.lambda_res * torch.sum(self.delta_B**2)

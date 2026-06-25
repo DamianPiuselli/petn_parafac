@@ -26,7 +26,7 @@ def extract_loadings(model):
         raw_model = getattr(model, '_orig_mod', model)
         A = raw_model.A.detach().cpu().numpy()
         B = raw_model.B.detach().cpu().numpy()
-        C = raw_model.C.detach().cpu().numpy()
+        C = raw_model.C_normalized.detach().cpu().numpy()
     return {'A': A, 'B': B, 'C': C}
 
 def extract_loadings_df(model, sample_names=None, time_points=None, spectral_channels=None):
@@ -89,7 +89,7 @@ def plot_alignment_verification(model, X_true, save_path=None):
     with torch.no_grad():
         raw_model = getattr(model, '_orig_mod', model)
         A = raw_model.A
-        C = raw_model.C
+        C = raw_model.C_normalized
         _, B_warped_t, _ = raw_model._forward_raw_grid()
         
         if hasattr(raw_model, 'delta_B'):

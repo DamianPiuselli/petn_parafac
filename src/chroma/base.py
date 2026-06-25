@@ -174,6 +174,13 @@ class BaseChromaPETN(nn.Module, ABC):
             nn.init.uniform_(C_init, a=0.01, b=0.1)
             C_init[:, :R_3] = torch.abs(U_3[:, :R_3]) * scale_3.unsqueeze(0) + 1e-4
             
+            # Normalize C_init and scale A_init to compensate
+            for r in range(R):
+                max_c = torch.max(C_init[:, r])
+                if max_c > 1e-8:
+                    C_init[:, r] /= max_c
+                    A_init[:, r] *= max_c
+            
             # Copy initialized values to parameters on native device
             self.A.copy_(A_init.to(device=self.A.device, dtype=self.A.dtype))
             self.B.copy_(B_init.to(device=self.B.device, dtype=self.B.dtype))
@@ -262,6 +269,12 @@ class BaseChromaPETN(nn.Module, ABC):
         self.project_constraints()
         print(f"Initialized warping shifts via cross-correlation: {shifts.cpu().numpy()}")
 
+    @property
+    def C_normalized(self):
+        c_max = torch.max(self.C, dim=0, keepdim=True)[0]
+        c_max = torch.clamp(c_max, min=1e-8)
+        return self.C / c_max
+
     @torch.no_grad()
     def project_constraints(self):
         """
@@ -271,7 +284,7 @@ class BaseChromaPETN(nn.Module, ABC):
         # A. Apply physical non-negativity constraint
         self.A.clamp_(min=0.0)
         self.B.clamp_(min=0.0)
-        self.C.clamp_(min=0.0)
+        self.C.clamp_(min=0.0, max=2.0)
         
         
         # B. Center and clamp warping parameters to resolve translation/scaling degeneracies
@@ -300,7 +313,7 @@ class BaseChromaPETN(nn.Module, ABC):
         """
         # 1. Lookup scores and spectra
         a = self.A[sample_idx]  # (BatchSize, num_components)
-        c = self.C[spec_idx]    # (BatchSize, num_components)
+        c = self.C_normalized[spec_idx]    # (BatchSize, num_components)
         
         # 2. Compute warped time coordinates for each coordinate and component
         t = time_idx.float() / (self.num_time - 1)  # (BatchSize,)
@@ -388,7 +401,7 @@ class BaseChromaPETN(nn.Module, ABC):
         t_grid = torch.linspace(0.0, 1.0, self.num_time, device=device)
         
         A = self.A  # (num_samples, num_components)
-        C = self.C  # (num_spec, num_components)
+        C = self.C_normalized  # (num_spec, num_components)
         
         # 1. Warp time coordinates per sample and component
         if self.warp_type == 'linear':
