@@ -1,14 +1,13 @@
-"""
-Utility Functions.
-Provides helpers for coordinate conversion, plotting EEM surfaces, and resolved loadings comparison.
-"""
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-def plot_resolved_vs_true_profiles(true_B, true_C, pred_B, pred_C, ex_wavelens, em_wavelens, save_path=None):
+
+def plot_resolved_vs_true_profiles(true_B, true_C, pred_B, pred_C, ex_wavelens, em_wavelens, component_names=None, save_path=None):
     """
-    Plots true vs. resolved excitation and emission loadings side by side.
+    Plots true vs. resolved excitation (B) and emission (C) loadings side by side, 
+    separated by component in a multi-row grid.
     
     Args:
         true_B: shape (num_ex, num_components)
@@ -17,42 +16,51 @@ def plot_resolved_vs_true_profiles(true_B, true_C, pred_B, pred_C, ex_wavelens, 
         pred_C: shape (num_em, num_components)
         ex_wavelens: array of excitation wavelengths
         em_wavelens: array of emission wavelengths
+        component_names: optional list of component labels (length num_components)
         save_path: path to save the generated image, or None to display it.
     """
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    num_components = true_B.shape[1]
+    num_components = pred_B.shape[1]
     
+    fig, axes = plt.subplots(num_components, 2, figsize=(14, 3.2 * num_components))
+    if num_components == 1:
+        axes = np.expand_dims(axes, axis=0)
+        
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
     
-    # 1. Plot Excitation Loadings
     for r in range(num_components):
-        label_true = f'True Comp {r+1}'
-        label_pred = f'Resolved Comp {r+1}'
-        axes[0].plot(ex_wavelens, true_B[:, r], label=label_true, color=colors[r % len(colors)], linestyle='--', alpha=0.7)
-        axes[0].plot(ex_wavelens, pred_B[:, r], label=label_pred, color=colors[r % len(colors)], linewidth=2)
+        color = colors[r % len(colors)]
+        comp_name = component_names[r] if component_names is not None else f'Component {r+1}'
         
-    axes[0].set_title('Excitation Loadings (B)')
-    axes[0].set_xlabel('Wavelength (nm)')
-    axes[0].set_ylabel('Normalized Intensity')
-    axes[0].grid(True, linestyle=':', alpha=0.6)
-    axes[0].legend()
-    
-    # 2. Plot Emission Loadings
-    for r in range(num_components):
-        label_true = f'True Comp {r+1}'
-        label_pred = f'Resolved Comp {r+1}'
-        axes[1].plot(em_wavelens, true_C[:, r], label=label_true, color=colors[r % len(colors)], linestyle='--', alpha=0.7)
-        axes[1].plot(em_wavelens, pred_C[:, r], label=label_pred, color=colors[r % len(colors)], linewidth=2)
+        # 1. Excitation Loading (Left column)
+        ax_b = axes[r, 0]
+        if true_B is not None:
+            ax_b.plot(ex_wavelens, true_B[:, r], label='True', color='gray', linestyle='--', alpha=0.7)
+        ax_b.plot(ex_wavelens, pred_B[:, r], label='Resolved', color=color, linewidth=2)
         
-    axes[1].set_title('Emission Loadings (C)')
-    axes[1].set_xlabel('Wavelength (nm)')
-    axes[1].set_ylabel('Normalized Intensity')
-    axes[1].grid(True, linestyle=':', alpha=0.6)
-    axes[1].legend()
-    
+        ax_b.set_title(f'{comp_name} - Excitation Loading (B)')
+        ax_b.set_xlabel('Wavelength (nm)')
+        ax_b.set_ylabel('Normalized Intensity')
+        ax_b.grid(True, linestyle=':', alpha=0.6)
+        ax_b.legend()
+        
+        # 2. Emission Loading (Right column)
+        ax_c = axes[r, 1]
+        if true_C is not None:
+            ax_c.plot(em_wavelens, true_C[:, r], label='True', color='gray', linestyle='--', alpha=0.7)
+        ax_c.plot(em_wavelens, pred_C[:, r], label='Resolved', color=color, linewidth=2)
+        
+        ax_c.set_title(f'{comp_name} - Emission Loading (C)')
+        ax_c.set_xlabel('Wavelength (nm)')
+        ax_c.set_ylabel('Normalized Intensity')
+        ax_c.grid(True, linestyle=':', alpha=0.6)
+        ax_c.legend()
+        
     plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=300)
+        dir_name = os.path.dirname(os.path.abspath(save_path))
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"Comparison plot saved to {save_path}")
     else:
         plt.show()

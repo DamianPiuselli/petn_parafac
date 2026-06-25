@@ -11,9 +11,10 @@ import matplotlib.pyplot as plt
 from scipy.io import loadmat
 from scipy.optimize import linear_sum_assignment
 
+import pandas as pd
 from src.eem.model import PETNParafac
 from src.eem.loss import masked_mse_loss
-from src.common.utils import EarlyStopping
+from src.common.utils import EarlyStopping, plot_resolved_vs_true_profiles
 
 def generate_aminoacids_scattering_mask(ex_wavelens, em_wavelens):
     """
@@ -199,59 +200,113 @@ def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43, patience=150, tol=1
     avg_r2 = np.mean(r2_scores)
     print(f"\nAverage Concentration Recovery R2: {avg_r2:.4f}")
     
-    # 7. Save resolved loading profiles comparison
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
+    # 7. Save resolved loading profiles and scores comparison
+    save_dir = 'notebooks/eem/experiments/aminoacids'
+    os.makedirs(save_dir, exist_ok=True)
     
-    for r in range(3):
-        axes[0].plot(ex_wavelens, aligned_B[:, r], label=names[r], color=colors[r], linewidth=2.5)
-        axes[1].plot(em_wavelens, aligned_C[:, r], label=names[r], color=colors[r], linewidth=2.5)
-        
-    axes[0].set_title('Resolved Excitation Loadings (B)')
-    axes[0].set_xlabel('Wavelength (nm)')
-    axes[0].set_ylabel('Normalized Intensity')
-    axes[0].grid(True, linestyle=':', alpha=0.6)
-    axes[0].legend()
+    # Plot 1: Resolved Loadings in multi-row grid (excitation left, emission right)
+    plot_resolved_vs_true_profiles(
+        true_B=None,
+        true_C=None,
+        pred_B=aligned_B,
+        pred_C=aligned_C,
+        ex_wavelens=ex_wavelens,
+        em_wavelens=em_wavelens,
+        component_names=names,
+        save_path=os.path.join(save_dir, 'aminoacids_resolved_profiles.png')
+    )
     
-    axes[1].set_title('Resolved Emission Loadings (C)')
-    axes[1].set_xlabel('Wavelength (nm)')
-    axes[1].set_ylabel('Normalized Intensity')
-    axes[1].grid(True, linestyle=':', alpha=0.6)
-    axes[1].legend()
-    
-    # Normalized concentration scores comparison
+    # Plot 2: Standalone Scores Comparison
+    fig, ax = plt.subplots(figsize=(8, 5))
     max_y = np.max(y_true, axis=0, keepdims=True)
     max_y = np.where(max_y == 0, 1.0, max_y)
     norm_y_true = y_true / max_y
     norm_aligned_A = aligned_A / max_y
 
-    axes[2].set_title('Concentration Recovery (Scores A)')
+    ax.set_title('Concentration Recovery (Scores A) - Amino Acids', fontsize=12, fontweight='bold')
     x = np.arange(num_samples)
     width = 0.12
     
-    axes[2].bar(x - 2.5 * width, norm_y_true[:, 0], width, label='Trp (True)', color='#1f77b4', alpha=0.4)
-    axes[2].bar(x - 1.5 * width, norm_aligned_A[:, 0], width, label='Trp (Pred)', color='#1f77b4', edgecolor='#1f77b4', linewidth=1.5)
+    ax.bar(x - 2.5 * width, norm_y_true[:, 0], width, label='Trp (True)', color='#1f77b4', alpha=0.4)
+    ax.bar(x - 1.5 * width, norm_aligned_A[:, 0], width, label='Trp (Pred)', color='#1f77b4', edgecolor='#1f77b4', linewidth=1.5)
     
-    axes[2].bar(x - 0.5 * width, norm_y_true[:, 1], width, label='Tyr (True)', color='#ff7f0e', alpha=0.4)
-    axes[2].bar(x + 0.5 * width, norm_aligned_A[:, 1], width, label='Tyr (Pred)', color='#ff7f0e', edgecolor='#ff7f0e', linewidth=1.5)
+    ax.bar(x - 0.5 * width, norm_y_true[:, 1], width, label='Tyr (True)', color='#ff7f0e', alpha=0.4)
+    ax.bar(x + 0.5 * width, norm_aligned_A[:, 1], width, label='Tyr (Pred)', color='#ff7f0e', edgecolor='#ff7f0e', linewidth=1.5)
     
-    axes[2].bar(x + 1.5 * width, norm_y_true[:, 2], width, label='Phe (True)', color='#2ca02c', alpha=0.4)
-    axes[2].bar(x + 2.5 * width, norm_aligned_A[:, 2], width, label='Phe (Pred)', color='#2ca02c', edgecolor='#2ca02c', linewidth=1.5)
+    ax.bar(x + 1.5 * width, norm_y_true[:, 2], width, label='Phe (True)', color='#2ca02c', alpha=0.4)
+    ax.bar(x + 2.5 * width, norm_aligned_A[:, 2], width, label='Phe (Pred)', color='#2ca02c', edgecolor='#2ca02c', linewidth=1.5)
     
-    axes[2].set_xlabel('Sample')
-    axes[2].set_ylabel('Normalized Concentration')
-    axes[2].set_xticks(x)
-    axes[2].set_xticklabels([f"S{i+1}" for i in range(num_samples)])
-    axes[2].grid(True, linestyle=':', alpha=0.6)
-    axes[2].legend(fontsize='small', ncol=3, loc='upper center', bbox_to_anchor=(0.5, 1.15))
+    ax.set_xlabel('Sample')
+    ax.set_ylabel('Normalized Concentration')
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"S{i+1}" for i in range(num_samples)])
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.legend(fontsize='small', ncol=3, loc='upper center', bbox_to_anchor=(0.5, 1.15))
     
     plt.tight_layout()
-    save_dir = 'notebooks/eem/experiments/aminoacids'
-    os.makedirs(save_dir, exist_ok=True)
-    plot_path = os.path.join(save_dir, 'aminoacids_resolved_profiles.png')
-    plt.savefig(plot_path, dpi=300)
+    scores_path = os.path.join(save_dir, 'aminoacids_scores.png')
+    plt.savefig(scores_path, dpi=300)
     plt.close()
-    print(f"\nResolved profiles plot saved to {plot_path}")
+    print(f"Saved resolved scores to {scores_path}")
+    
+    # Plot 3: Resolved Molar Absorptivities
+    fig, ax = plt.subplots(figsize=(8, 5))
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
+    for r in range(3):
+        ax.plot(ex_wavelens, aligned_E[:, r], label=names[r], color=colors[r], linewidth=2.5)
+    ax.set_title("Resolved Molar Absorptivities (E) - Amino Acids", fontsize=12, fontweight='bold')
+    ax.set_xlabel("Wavelength (nm)")
+    ax.set_ylabel("Absorptivity")
+    ax.grid(True, linestyle=":", alpha=0.6)
+    ax.legend()
+    plt.tight_layout()
+    abs_path = os.path.join(save_dir, 'aminoacids_resolved_absorptivities.png')
+    plt.savefig(abs_path, dpi=300)
+    plt.close()
+    print(f"Saved resolved absorptivities to {abs_path}")
+    
+    # 8. Export CSV files
+    comp_cols = ["Tryptophan", "Tyrosine", "Phenylalanine"]
+    df_scores = pd.DataFrame(aligned_A, index=[f"Sample_{i+1}" for i in range(num_samples)], columns=comp_cols)
+    df_ex_loadings = pd.DataFrame(aligned_B, index=ex_wavelens, columns=comp_cols)
+    df_em_loadings = pd.DataFrame(aligned_C, index=em_wavelens, columns=comp_cols)
+    df_abs = pd.DataFrame(aligned_E, index=ex_wavelens, columns=comp_cols)
+    
+    df_scores.to_csv(os.path.join(save_dir, "resolved_scores.csv"))
+    df_ex_loadings.to_csv(os.path.join(save_dir, "resolved_excitation_loadings.csv"))
+    df_em_loadings.to_csv(os.path.join(save_dir, "resolved_emission_loadings.csv"))
+    df_abs.to_csv(os.path.join(save_dir, "resolved_absorptivities.csv"))
+    print(f"CSVs exported to: {save_dir}/")
+    
+    # 9. Write aminoacids_experiment_report.md
+    report_content = f"""# EEM-PETN Real-World Amino Acids Experiment Report
+
+## 1. Summary of Recovered Component Concentrations & Peak Locations
+Below are the recovery metrics (R² scores) for resolved concentrations and recovered peak wavelengths for the 3 amino acids (Tryptophan, Tyrosine, and Phenylalanine).
+
+| Component | Amino Acid Label | Concentration Recovery (A) R² | Resolved Ex Peak (nm) | Resolved Em Peak (nm) |
+|---|---|---|---|---|
+"""
+    for r in range(3):
+        peak_ex = ex_wavelens[np.argmax(aligned_B[:, r])]
+        peak_em = em_wavelens[np.argmax(aligned_C[:, r])]
+        report_content += f"| **Component {r+1}** | {names[r]} | {r2_scores[r]:.6f} | {peak_ex:.1f} | {peak_em:.1f} |\n"
+
+    report_content += f"""
+### Key Averages:
+- **Average Concentration Score R² (A):** {avg_r2:.6f}
+
+## 2. Visualization Artifacts
+The following plots have been generated and saved to the EEM output folder:
+1. **[Resolved Profiles](aminoacids_resolved_profiles.png)**: Visualizes resolved excitation (B) and emission (C) loadings separated by component.
+2. **[Scores Recovery](aminoacids_scores.png)**: Bar chart comparing true vs. predicted normalized concentration scores for each component across all samples.
+3. **[Resolved Absorptivities](aminoacids_resolved_absorptivities.png)**: Visualizes resolved excitation (E) molar absorptivity curves.
+"""
+    
+    report_path = os.path.join(save_dir, 'aminoacids_experiment_report.md')
+    with open(report_path, 'w') as f:
+        f.write(report_content)
+    print(f"Diagnostics: Amino Acids Report written to: {report_path}")
     
     return {
         'r2_scores': r2_scores,
@@ -260,3 +315,4 @@ def train_aminoacids_dataset(epochs=3000, lr=0.008, seed=43, patience=150, tol=1
 
 if __name__ == '__main__':
     train_aminoacids_dataset()
+

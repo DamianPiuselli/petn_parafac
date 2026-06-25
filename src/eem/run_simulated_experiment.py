@@ -2,6 +2,7 @@
 Training and Validation Loops.
 Handles dataset preparation, optimizer stepping, constraints projection, and model evaluation.
 """
+import os
 import torch
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
@@ -315,31 +316,36 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43, patience=150,
     metrics['r2_E'] = r2_E
     metrics['r2_M'] = r2_M
     
-    # 7. Save comparison plots
+    # 7. Save comparison plots and CSVs
     from src.common.utils import (
         plot_resolved_vs_true_profiles,
         plot_eem_heatmaps,
         plot_resolved_absorptivities,
         plot_scores_comparison
     )
+    save_dir = 'notebooks/eem/experiments/simulated'
+    os.makedirs(save_dir, exist_ok=True)
+    
+    fluorophore_names = [f"Fluorophore Component {r+1}" for r in range(generator.num_components)]
+    
     plot_resolved_vs_true_profiles(
         true_B, true_C, aligned_B, aligned_C,
         generator.ex_wavelens, generator.em_wavelens,
-        save_path='notebooks/eem/experiments/simulated/phase3_resolved_profiles.png'
+        component_names=fluorophore_names,
+        save_path=os.path.join(save_dir, 'simulated_resolved_profiles.png')
     )
     
     plot_resolved_absorptivities(
         E_true, M_true, aligned_E, aligned_M,
         generator.ex_wavelens, generator.em_wavelens,
-        save_path='notebooks/eem/experiments/simulated/phase3_resolved_absorptivities.png'
+        save_path=os.path.join(save_dir, 'simulated_resolved_absorptivities.png')
     )
     
     # Save scores comparison plot
-    fluorophore_names = [f"Fluorophore Component {r+1}" for r in range(generator.num_components)]
     plot_scores_comparison(
         true_A, aligned_A,
         component_names=fluorophore_names,
-        save_path='notebooks/eem/experiments/simulated/scores_comparison.png'
+        save_path=os.path.join(save_dir, 'simulated_scores.png')
     )
     
     # Calculate reconstructed observed EEM for heatmap display
@@ -358,8 +364,23 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43, patience=150,
         X_reconstructed=X_reconstructed[0],
         ex_wavelens=generator.ex_wavelens,
         em_wavelens=generator.em_wavelens,
-        save_path='notebooks/eem/experiments/simulated/phase3_eem_heatmaps.png'
+        save_path=os.path.join(save_dir, 'simulated_eem_heatmaps.png')
     )
+    
+    # Save resolved CSV files
+    comp_names = [f"Fluorophore_Component_{r+1}" for r in range(generator.num_components)]
+    df_A = pd.DataFrame(aligned_A, index=[f"Sample_{i+1}" for i in range(generator.num_samples)], columns=comp_names)
+    df_B = pd.DataFrame(aligned_B, index=generator.ex_wavelens, columns=comp_names)
+    df_C = pd.DataFrame(aligned_C, index=generator.em_wavelens, columns=comp_names)
+    df_E = pd.DataFrame(aligned_E, index=generator.ex_wavelens, columns=comp_names)
+    df_M = pd.DataFrame(aligned_M, index=generator.em_wavelens, columns=comp_names)
+    
+    df_A.to_csv(os.path.join(save_dir, "resolved_scores.csv"))
+    df_B.to_csv(os.path.join(save_dir, "resolved_excitation_loadings.csv"))
+    df_C.to_csv(os.path.join(save_dir, "resolved_emission_loadings.csv"))
+    df_E.to_csv(os.path.join(save_dir, "resolved_excitation_absorptivities.csv"))
+    df_M.to_csv(os.path.join(save_dir, "resolved_emission_absorptivities.csv"))
+    print(f"CSVs exported to: {save_dir}/")
     
     # Write report.md
     a_sims = [np.corrcoef(true_A[:, r], aligned_A[:, r])[0, 1] for r in range(generator.num_components)]
@@ -367,12 +388,12 @@ def train_petn_mvp(epochs=3000, lr=0.008, batch_size=512, seed=43, patience=150,
     c_sims = [np.corrcoef(true_C[:, r], aligned_C[:, r])[0, 1] for r in range(generator.num_components)]
     
     report_content = f"""# EEM-PETN Model Calibration & Recovery Report
-
-## 1. Summary of Recovered Component Loadings & Absorptivities
-Below are the recovery metrics (R² scores and Cosine Similarities) between the ground truth and EEM-PETN resolved profiles for each of the {generator.num_components} chemical components.
-
-| Component | Fluorophore Label | Score (A) R² | Score (A) CosSim | Excitation (B) R² | Excitation (B) CosSim | Emission (C) R² | Emission (C) CosSim | Excitation Abs (E) R² | Emission Abs (M) R² |
-|---|---|---|---|---|---|---|---|---|---|
+ 
+ ## 1. Summary of Recovered Component Loadings & Absorptivities
+ Below are the recovery metrics (R² scores and Cosine Similarities) between the ground truth and EEM-PETN resolved profiles for each of the {generator.num_components} chemical components.
+ 
+ | Component | Fluorophore Label | Score (A) R² | Score (A) CosSim | Excitation (B) R² | Excitation (B) CosSim | Emission (C) R² | Emission (C) CosSim | Excitation Abs (E) R² | Emission Abs (M) R² |
+ |---|---|---|---|---|---|---|---|---|---|
 """
     for r in range(generator.num_components):
         a_r2 = metrics['r2_A'][r]
@@ -387,24 +408,22 @@ Below are the recovery metrics (R² scores and Cosine Similarities) between the 
         report_content += f"| **Component {r+1}** | {lbl} | {a_r2:.6f} | {a_sim:.6f} | {b_r2:.6f} | {b_sim:.6f} | {c_r2:.6f} | {c_sim:.6f} | {e_r2:.6f} | {m_r2:.6f} |\n"
         
     report_content += f"""
-### Key Averages:
-- **Average Concentration Score R² (A):** {np.mean(metrics['r2_A']):.6f}
-- **Average Excitation Loading R² (B):** {np.mean(metrics['r2_B']):.6f}
-- **Average Emission Loading R² (C):** {np.mean(metrics['r2_C']):.6f}
-- **Average Excitation Absorptivity R² (E):** {np.mean(metrics['r2_E']):.6f}
-- **Average Emission Absorptivity R² (M):** {np.mean(metrics['r2_M']):.6f}
-
-## 2. Visualization Artifacts
-The following plots have been generated and saved to the EEM output folder:
-1. **[Resolved Profiles](phase3_resolved_profiles.png)**: Overlays true vs. recovered excitation (B) and emission (C) profiles.
-2. **[Resolved Absorptivities](phase3_resolved_absorptivities.png)**: Overlays true vs. recovered excitation (E) and emission (M) molar absorptivity curves.
-3. **[EEM Heatmaps](phase3_eem_heatmaps.png)**: Visualizes the true EEM, corrupted EEM, scatter mask, and reconstructed EEM.
-4. **[Scores Comparison](scores_comparison.png)**: Parity plots of true vs. predicted concentrations (scores) with a 1:1 diagonal reference.
-"""
+ ### Key Averages:
+ - **Average Concentration Score R² (A):** {np.mean(metrics['r2_A']):.6f}
+ - **Average Excitation Loading R² (B):** {np.mean(metrics['r2_B']):.6f}
+ - **Average Emission Loading R² (C):** {np.mean(metrics['r2_C']):.6f}
+ - **Average Excitation Absorptivity R² (E):** {np.mean(metrics['r2_E']):.6f}
+ - **Average Emission Absorptivity R² (M):** {np.mean(metrics['r2_M']):.6f}
+ 
+ ## 2. Visualization Artifacts
+ The following plots have been generated and saved to the EEM output folder:
+ 1. **[Resolved Profiles](simulated_resolved_profiles.png)**: Overlays true vs. recovered excitation (B) and emission (C) profiles.
+ 2. **[Resolved Absorptivities](simulated_resolved_absorptivities.png)**: Overlays true vs. recovered excitation (E) and emission (M) molar absorptivity curves.
+ 3. **[EEM Heatmaps](simulated_eem_heatmaps.png)**: Visualizes the true EEM, corrupted EEM, scatter mask, and reconstructed EEM.
+ 4. **[Scores Comparison](simulated_scores.png)**: Parity plots of true vs. predicted concentrations (scores) with a 1:1 diagonal reference.
+ """
     
-    import os
     report_path = 'notebooks/eem/experiments/simulated/simulated_experiment_report.md'
-    os.makedirs(os.path.dirname(report_path), exist_ok=True)
     with open(report_path, 'w') as f:
         f.write(report_content)
     print(f"Diagnostics: EEM Report written to: {report_path}")

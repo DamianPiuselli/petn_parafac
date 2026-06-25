@@ -9,9 +9,10 @@ import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
 
+import pandas as pd
 from src.eem.model import PETNParafac
 from src.eem.loss import masked_mse_loss
-from src.common.utils import EarlyStopping
+from src.common.utils import EarlyStopping, plot_resolved_vs_true_profiles
 
 def generate_honey_scattering_mask(ex_wavelens, em_wavelens):
     """
@@ -276,7 +277,6 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42, patienc
     from sklearn.linear_model import LogisticRegression
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import LeaveOneOut
-    from sklearn.preprocessing import StandardScaler
 
     # One-hot encode targets for PLS-DA
     unique_classes = np.unique(class_ids)
@@ -409,43 +409,34 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42, patienc
     save_dir = 'notebooks/eem/experiments/honey'
     os.makedirs(save_dir, exist_ok=True)
     
-    # Plot 1: Resolved Loadings and Molar Absorptivities
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    # Plot 1: Resolved Loadings in multi-row grid (excitation left, emission right)
+    plot_resolved_vs_true_profiles(
+        true_B=None,
+        true_C=None,
+        pred_B=pred_B,
+        pred_C=pred_C,
+        ex_wavelens=ex_wavelens,
+        em_wavelens=em_wavelens,
+        component_names=[f"Component {r+1}" for r in range(num_components)],
+        save_path=os.path.join(save_dir, 'honey_resolved_profiles.png')
+    )
     
-    # Excitation Loadings
+    # Plot 2: Standalone Resolved Molar Absorptivities
+    fig, ax = plt.subplots(figsize=(8, 5))
     for r in range(num_components):
-        axes[0].plot(ex_wavelens, pred_B[:, r], label=f'Comp {r+1}', linewidth=2.5)
-    axes[0].set_title('Resolved Excitation Loadings')
-    axes[0].set_xlabel('Wavelength (nm)')
-    axes[0].set_ylabel('Normalized Intensity')
-    axes[0].grid(True, linestyle='--', alpha=0.6)
-    axes[0].legend(ncol=2)
-    
-    # Emission Loadings
-    for r in range(num_components):
-        axes[1].plot(em_wavelens, pred_C[:, r], label=f'Comp {r+1}', linewidth=2.5)
-    axes[1].set_title('Resolved Emission Loadings')
-    axes[1].set_xlabel('Wavelength (nm)')
-    axes[1].set_ylabel('Normalized Intensity')
-    axes[1].grid(True, linestyle='--', alpha=0.6)
-    axes[1].legend(ncol=2)
-    
-    # Molar Absorptivities
-    for r in range(num_components):
-        axes[2].plot(ex_wavelens, pred_E[:, r], label=f'Comp {r+1}', linewidth=2.5)
-    axes[2].set_title('Resolved Molar Absorptivities (E)')
-    axes[2].set_xlabel('Wavelength (nm)')
-    axes[2].set_ylabel('Absorptivity Coefficient')
-    axes[2].grid(True, linestyle='--', alpha=0.6)
-    axes[2].legend(ncol=2)
-    
+        ax.plot(ex_wavelens, pred_E[:, r], label=f'Component {r+1}', linewidth=2.5)
+    ax.set_title('Resolved Molar Absorptivities (E) - Honey', fontsize=12, fontweight='bold')
+    ax.set_xlabel('Wavelength (nm)')
+    ax.set_ylabel('Absorptivity')
+    ax.grid(True, linestyle='--', alpha=0.6)
+    ax.legend(ncol=2)
     plt.tight_layout()
-    plots_path = os.path.join(save_dir, 'honey_resolved_profiles.png')
-    plt.savefig(plots_path, dpi=200)
+    abs_path = os.path.join(save_dir, 'honey_resolved_absorptivities.png')
+    plt.savefig(abs_path, dpi=200)
     plt.close()
-    print(f"Saved resolved profiles to {plots_path}")
+    print(f"Saved resolved absorptivities to {abs_path}")
     
-    # Plot 2: PCA Score Clusters (Row-Normalized)
+    # Plot 3: PCA Score Clusters (Row-Normalized)
     plt.figure(figsize=(10, 8))
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
     
@@ -474,6 +465,53 @@ def train_honey_dataset(num_components=6, epochs=3000, lr=0.03, seed=42, patienc
     plt.savefig(pca_path, dpi=200)
     plt.close()
     print(f"Saved PCA separation plot to {pca_path}")
+    
+    # 8. Export CSV files
+    comp_cols = [f"Component_{r+1}" for r in range(num_components)]
+    df_scores = pd.DataFrame(pred_A, index=[f"Sample_{i+1}" for i in range(num_samples)], columns=comp_cols)
+    df_ex_loadings = pd.DataFrame(pred_B, index=ex_wavelens, columns=comp_cols)
+    df_em_loadings = pd.DataFrame(pred_C, index=em_wavelens, columns=comp_cols)
+    df_abs = pd.DataFrame(pred_E, index=ex_wavelens, columns=comp_cols)
+    
+    df_scores.to_csv(os.path.join(save_dir, "resolved_scores.csv"))
+    df_ex_loadings.to_csv(os.path.join(save_dir, "resolved_excitation_loadings.csv"))
+    df_em_loadings.to_csv(os.path.join(save_dir, "resolved_emission_loadings.csv"))
+    df_abs.to_csv(os.path.join(save_dir, "resolved_absorptivities.csv"))
+    print(f"CSVs exported to: {save_dir}/")
+    
+    # 9. Write honey_experiment_report.md
+    report_content = f"""# EEM-PETN Copenhagen Honey Experiment Report
+
+## 1. Summary of Model Performance & Diagnostics
+Below are the botanical classification accuracies achieved by applying different supervised and unsupervised models to the resolved concentration scores (A) under leave-one-out cross-validation.
+
+### Supervised Classification Accuracy (Multiclass, Autoscale)
+- **PLS-DA:** {acc_pls*100:.2f}%
+- **SVM (Linear):** {acc_svc_lin*100:.2f}%
+- **SVM (RBF):** {acc_svc_rbf*100:.2f}%
+- **Logistic Regression:** {acc_lr*100:.2f}%
+- **Random Forest:** {acc_rf*100:.2f}%
+
+### Binary Classification Accuracy (Authentic vs. Adulterated)
+- **SVM (Linear):** {acc_svc_lin_bin*100:.2f}%
+- **SVM (RBF):** {acc_svc_rbf_bin*100:.2f}%
+- **Logistic Regression:** {acc_lr_bin*100:.2f}%
+
+### Attenuation Head Diagnostics
+- **Average Attenuation Coefficient (Gamma):** {np.mean(gamma_matrix):.4f} (Min: {np.min(gamma_matrix):.4f}, Max: {np.max(gamma_matrix):.4f})
+- **Learned Component Molar Absorptivities (Alpha):** {", ".join([f"{val:.4e}" for val in pred_alpha])}
+
+## 2. Visualization Artifacts
+The following plots have been generated and saved to the EEM output folder:
+1. **[Resolved Profiles](honey_resolved_profiles.png)**: Visualizes resolved excitation (B) and emission (C) loadings separated by component.
+2. **[PCA Score Clusters](honey_pca_separation.png)**: Visualizes separation of botanical classes using principal components of the resolved scores.
+3. **[Resolved Absorptivities](honey_resolved_absorptivities.png)**: Visualizes resolved excitation (E) molar absorptivity curves.
+"""
+    report_path = os.path.join(save_dir, 'honey_experiment_report.md')
+    with open(report_path, 'w') as f:
+        f.write(report_content)
+    print(f"Diagnostics: Honey Report written to: {report_path}")
 
 if __name__ == '__main__':
     train_honey_dataset()
+
